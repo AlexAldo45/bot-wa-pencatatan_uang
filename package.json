@@ -1,0 +1,44 @@
+{
+  "name": "tripwallet-ai",
+  "version": "1.0.0",
+  "description": "WhatsApp Bot for travel expense tracking using Groq AI",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "node --watch src/app.js",
+    "migrate": "node src/database/migrate.js",
+    "seed": "node src/database/seeds/seed.js",
+    "backup": "node scripts/backup.js",
+    "restore": "node scripts/restore.js",
+    "test": "node --test",
+    "sim-wa": "node scripts/cli-simulator.js",
+    "lint": "eslint src tests"
+  },
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "expense",
+    "tracking",
+    "ai",
+    "groq"
+  ],
+  "author": "TripWallet AI",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "dotenv": "^16.3.1",
+    "exceljs": "^4.4.0",
+    "groq-sdk": "^0.5.0",
+    "pino": "^8.17.0",
+    "pm2": "^5.3.0",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.23.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "eslint": "^8.56.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
