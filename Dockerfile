@@ -1,5 +1,5 @@
 # Use Node 20 LTS Debian image for full Linux library support for Puppeteer / Chromium
-FROM node:20-bookworm-slim
+FROM node:22-bookworm-slim
 
 # Install Chromium and required headless browser dependencies
 RUN apt-get update && apt-get install -y \
