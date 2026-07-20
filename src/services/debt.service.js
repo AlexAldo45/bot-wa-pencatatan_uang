@@ -1,4 +1,7 @@
 const debtRepository = require('../repositories/debt.repository');
+const memberRepository = require('../repositories/member.repository');
+const transactionRepository = require('../repositories/transaction.repository');
+const { formatCurrency } = require('../utils/currency');
 
 class DebtService {
     /**
@@ -72,6 +75,151 @@ class DebtService {
      */
     getMemberBalances(tripId) {
         return debtRepository.getUserTripBalances(tripId);
+    }
+
+    /**
+     * Get detailed numbered debt list for a specific user
+     * Returns debts they owe to others (for payment)
+     */
+    getUserNumberedDebts(tripId, userId) {
+        const db = require('../database/database').getDb();
+        
+        // Get raw debts (what user owes to others)
+        const rawDebts = debtRepository.getUserItemizedDebts(tripId, userId);
+        const transfers = debtRepository.getTripTransfers(tripId);
+        const members = debtRepository.getUserTripBalances(tripId);
+        
+        // Build net transfers map: netTransfers[creditorId] = amount user paid to creditor
+        const netTransfers = new Map();
+        for (const t of transfers) {
+            if (t.sender_id === userId) {
+                const current = netTransfers.get(t.receiver_id) || 0;
+                netTransfers.set(t.receiver_id, current + t.amount);
+            } else if (t.receiver_id === userId) {
+                const current = netTransfers.get(t.sender_id) || 0;
+                netTransfers.set(t.sender_id, current - t.amount);
+            }
+        }
+        
+        // Group raw debts by creditor
+        const debtsByCreditor = new Map();
+        for (const d of rawDebts) {
+            if (!debtsByCreditor.has(d.creditor_id)) {
+                debtsByCreditor.set(d.creditor_id, []);
+            }
+            debtsByCreditor.get(d.creditor_id).push(d);
+        }
+        
+        const numberedDebts = [];
+        let debtNumber = 1;
+        
+        for (const [creditorId, debts] of debtsByCreditor) {
+            const creditorMember = members.find(m => m.user_id === creditorId);
+            const creditorNickname = creditorMember ? creditorMember.nickname : `User-${creditorId}`;
+            
+            // Sum total debt to this creditor
+            const totalDebt = debts.reduce((sum, d) => sum + d.share_amount, 0);
+            // Subtract transfers already made
+            const paid = netTransfers.get(creditorId) || 0;
+            const remaining = totalDebt - paid;
+            
+            if (remaining > 0) {
+                numberedDebts.push({
+                    number: debtNumber++,
+                    creditorId,
+                    creditorNickname,
+                    totalDebt,
+                    paid,
+                    remaining,
+                    items: debts.map(d => ({ description: d.description, amount: d.share_amount }))
+                });
+            }
+        }
+        
+        return numberedDebts;
+    }
+
+    /**
+     * Process debt payment by numbered list
+     * e.g., "membayar hutang 1, 2, 3"
+     */
+    async payDebtsByNumber(tripId, debtorUserId, creditorUserId, debtNumbers, creatorWhatsappId) {
+        const numberedDebts = this.getUserNumberedDebts(tripId, debtorUserId);
+        const targetDebts = numberedDebts.filter(d => debtNumbers.includes(d.number));
+        
+        if (targetDebts.length === 0) {
+            throw new Error('No valid debt numbers found');
+        }
+        
+        // Verify all target debts are to the same creditor
+        const uniqueCreditors = new Set(targetDebts.map(d => d.creditorId));
+        if (uniqueCreditors.size > 1) {
+            throw new Error('Cannot pay multiple creditors in one transaction. Please specify debts to one creditor at a time.');
+        }
+        
+        const creditorId = targetDebts[0].creditorId;
+        const creditorNickname = targetDebts[0].creditorNickname;
+        
+        // Calculate total amount
+        let totalAmount = 0;
+        const paidDescriptions = [];
+        
+        for (const debt of targetDebts) {
+            totalAmount += debt.remaining;
+            paidDescriptions.push(...debt.items.map(i => `${i.description} (${formatCurrency(i.amount)})`));
+        }
+        
+        // Create TRANSFER transaction
+        const debtor = memberRepository.getUserById(debtorUserId);
+        const creditor = memberRepository.getUserById(creditorId);
+        
+        if (!debtor || !creditor) {
+            throw new Error('Debtor or creditor not found');
+        }
+        
+        // Use transaction service to create transfer
+        const transactionService = require('./transaction.service');
+        
+        const txData = {
+            type: 'TRANSFER',
+            amount: totalAmount,
+            description: `Pelunasan hutang ke ${creditorNickname}: ${paidDescriptions.join(', ')}`,
+            paidBy: debtor.nickname,
+            splitType: 'NONE',
+            splitMembers: [creditor.nickname],
+            originalMessage: `membayar hutang ${targetDebts.map(d => d.number).join(', ')}`,
+            aiConfidence: 1.0
+        };
+        
+        const trip = await require('./trip.service').getActiveTripByChatId(
+            debtor.whatsapp_id
+        );
+        
+        const result = await transactionService.createTransaction(
+            trip.id,
+            debtorUserId,
+            txData
+        );
+        
+        // Record debt payment
+        debtRepository.recordDebtPayment(
+            tripId,
+            debtorUserId,
+            creditorId,
+            totalAmount,
+            result.id,
+            `Pelunasan hutang nomor ${targetDebts.map(d => d.number).join(', ')}`
+        );
+        
+        // Update debt status
+        debtRepository.updateDebtStatus(tripId, debtorUserId, creditorId, 'PAID');
+        
+        return {
+            transaction: result,
+            totalAmount,
+            creditorNickname,
+            debtNumbers: targetDebts.map(d => d.number)
+        };
     }
 
     /**
@@ -163,7 +311,7 @@ class DebtService {
                     }
                 }
 
-                // Fallback for direct transfer imbalances (e.g. user owes money due to over-receiving transfers)
+                // Fallback for direct transfer imbalances
                 if (!addedAny) {
                     finalDebts.push({
                         description: 'Saldo transfer / Penyesuaian pelunasan',
@@ -191,7 +339,7 @@ class DebtService {
                     }
                 }
 
-                // Fallback for direct transfer imbalances (e.g. cp owes money due to user over-paying transfers)
+                // Fallback for direct transfer imbalances
                 if (!addedAny) {
                     finalCredits.push({
                         description: 'Saldo transfer / Penyesuaian pelunasan',

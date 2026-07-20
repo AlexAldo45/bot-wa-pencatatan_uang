@@ -40,10 +40,10 @@ module.exports = {
             `).all(trip.id);
 
             const txRows = [];
-            const headerTx = ['Kode', 'Tanggal', 'Tipe', 'Deskripsi', 'Kategori', 'Nominal Total (Rp)', 'Dibayar Oleh', 'Anggota', 'Bagian (Rp)'];
+            const headerTx = ['Kode', 'Tanggal', 'Tipe', 'Deskripsi', 'Kategori', 'Nominal Total (Rp)', 'Dibayar Oleh', 'Anggota', 'Bagian (Rp)', 'Kondisi'];
             for (const t of txs) {
                 const splits = db.prepare(`
-                    SELECT tm.nickname, ts.share_amount
+                    SELECT tm.nickname, ts.share_amount, ts.is_debt, ts.debt_status
                     FROM transaction_splits ts
                     JOIN trip_members tm ON ts.user_id = tm.user_id AND tm.trip_id = ?
                     WHERE ts.transaction_id = ?
@@ -51,34 +51,33 @@ module.exports = {
 
                 if (splits.length === 0) {
                     // No splits recorded (NONE) -> payer bears full amount
-                    txRows.push([t.transaction_code, t.transaction_date, t.type === 'TRANSFER' ? 'Transfer' : 'Pengeluaran', t.description, t.category, t.amount, t.paid_by, t.paid_by, t.amount]);
+                    txRows.push([t.transaction_code, t.transaction_date, t.type === 'TRANSFER' ? 'Transfer' : 'Pengeluaran', t.description, t.category, t.amount, t.paid_by, t.paid_by, t.amount, '']);
                 } else {
                     for (const s of splits) {
-                        txRows.push([t.transaction_code, t.transaction_date, t.type === 'TRANSFER' ? 'Transfer' : 'Pengeluaran', t.description, t.category, t.amount, t.paid_by, s.nickname, s.share_amount]);
+                        let kondisi = '';
+                        if (s.is_debt) {
+                            kondisi = s.debt_status === 'OPEN' ? 'Hutang' : s.debt_status === 'PAID' ? 'Lunas' : '';
+                        }
+                        txRows.push([t.transaction_code, t.transaction_date, t.type === 'TRANSFER' ? 'Transfer' : 'Pengeluaran', t.description, t.category, t.amount, t.paid_by, s.nickname, s.share_amount, kondisi]);
                     }
                 }
             }
             await sheetsService.fullSync(spreadsheetId, 'Transaksi', txRows, headerTx);
 
-            // 3. Utang Piutang (Minimum Settlement)
-            const debts = debtService.calculateDebts(trip.id);
-            const debtRows = debts.length > 0 ? debts.map(d => [d.debtorNickname, d.creditorNickname, d.amount]) : [['Semua Bersih', '-', 0]];
-            const headerDebt = ['Debitur (Berutang)', 'Kreditur (Diterima)', 'Jumlah (Rp)'];
-            await sheetsService.fullSync(spreadsheetId, 'Utang Piutang', debtRows, headerDebt);
-
             // 4. Per-member transaction sheets
-            const headerMemberTx = ['Kode', 'Tanggal & Waktu', 'Tipe', 'Deskripsi', 'Kategori', 'Nominal Total (Rp)', 'Dibayar Oleh', 'Bagian (Rp)'];
+            const headerMemberTx = ['Kode', 'Tanggal & Waktu', 'Tipe', 'Deskripsi', 'Kategori', 'Nominal Total (Rp)', 'Dibayar Oleh', 'Bagian (Rp)', 'Kondisi'];
             for (const m of members) {
                 const memberRows = [];
                 for (const t of txs) {
                     const splits = db.prepare(`
-                        SELECT tm.nickname, ts.share_amount
+                        SELECT tm.nickname, ts.share_amount, ts.is_debt, ts.debt_status
                         FROM transaction_splits ts
                         JOIN trip_members tm ON ts.user_id = tm.user_id AND tm.trip_id = ?
                         WHERE ts.transaction_id = ?
                     `).all(trip.id, t.id);
                     let involved = false;
                     let memberShare = 0;
+                    let memberKondisi = '';
                     if (splits.length === 0) {
                         if (t.paid_by === m.nickname) {
                             involved = true;
@@ -89,6 +88,9 @@ module.exports = {
                             if (s.nickname === m.nickname) {
                                 involved = true;
                                 memberShare = s.share_amount;
+                                if (s.is_debt) {
+                                    memberKondisi = s.debt_status === 'OPEN' ? 'Hutang' : s.debt_status === 'PAID' ? 'Lunas' : '';
+                                }
                                 break;
                             }
                         }
@@ -96,14 +98,14 @@ module.exports = {
                     // Skip TRANSFER in per-member sheets (debt payment not counted as expense)
                     if (t.type === 'TRANSFER') continue;
                     if (involved) {
-                        memberRows.push([t.transaction_code, t.transaction_date, 'Pengeluaran', t.description, t.category, t.amount, t.paid_by, memberShare]);
+                        memberRows.push([t.transaction_code, t.transaction_date, 'Pengeluaran', t.description, t.category, t.amount, t.paid_by, memberShare, memberKondisi]);
                     }
                 }
                 const sheetName = `Transaksi ${m.nickname}`;
                 await sheetsService.fullSync(spreadsheetId, sheetName, memberRows, headerMemberTx);
             }
 
-            return `✅ *Sinkronisasi Google Sheets berhasil!*\n\nSpreadsheet: https://docs.google.com/spreadsheets/d/${spreadsheetId}\n\nLembar yang diperbarui:\n1. Ringkasan (${members.length} anggota)\n2. Transaksi (${txs.length} entri detail per anggota)\n3. Utang Piutang (${debts.length} relasi)\n4. Per-member sheets (${members.length} sheet)`;
+            return `✅ *Sinkronisasi Google Sheets berhasil!*\n\nSpreadsheet: https://docs.google.com/spreadsheets/d/${spreadsheetId}\n\nLembar yang diperbarui:\n1. Ringkasan (${members.length} anggota)\n2. Transaksi (${txs.length} entri detail per anggota)\n3. Per-member sheets (${members.length} sheet)`;
         } catch (err) {
             console.error('Sheets sync error:', err);
             return `❌ Gagal sinkron ke Google Sheets: ${err.message}`;

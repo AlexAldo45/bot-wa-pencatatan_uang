@@ -7,6 +7,7 @@ const transactionIntentSchema = z.object({
         "GET_SUMMARY",
         "GET_HISTORY",
         "GET_DEBT",
+        "PAY_DEBT",
         "CREATE_TRIP",
         "SELECT_TRIP",
         "LIST_TRIP",

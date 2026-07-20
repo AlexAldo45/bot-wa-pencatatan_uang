@@ -96,6 +96,9 @@ class TransactionService {
         // 3. Resolve splits
         let splits = [];
         const sType = splitType || 'NONE';
+        
+        // Detect if this is a debt transaction (keyword "hutang" in original message)
+        const isDebtTransaction = originalMessage && originalMessage.toLowerCase().includes('hutang');
 
         if (type === 'TRANSFER') {
             // For transfers, split_members indicates the recipient of the money.
@@ -220,7 +223,9 @@ class TransactionService {
         const transactionId = transactionRepository.createTransactionWithSplits(
             txData,
             splits,
-            { action: 'CREATE_TRANSACTION' }
+            { action: 'CREATE_TRANSACTION' },
+            isDebtTransaction,
+            paidByUserId
         );
 
         // Fire-and-forget Google Sheets append (non-blocking)

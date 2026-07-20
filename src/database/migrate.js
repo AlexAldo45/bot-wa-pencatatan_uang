@@ -113,10 +113,38 @@ function runMigrations() {
             transaction_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
             share_amount INTEGER NOT NULL,
+            is_debt INTEGER NOT NULL DEFAULT 0,
+            debt_status TEXT NOT NULL DEFAULT 'N/A',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(transaction_id, user_id),
             FOREIGN KEY(transaction_id) REFERENCES transactions(id) ON DELETE CASCADE,
             FOREIGN KEY(user_id) REFERENCES users(id)
+        );
+    `);
+
+    // Migration: add is_debt and debt_status columns if they don't exist (for existing databases)
+    try {
+        db.exec(`ALTER TABLE transaction_splits ADD COLUMN is_debt INTEGER NOT NULL DEFAULT 0;`);
+    } catch (e) { /* column exists */ }
+    try {
+        db.exec(`ALTER TABLE transaction_splits ADD COLUMN debt_status TEXT NOT NULL DEFAULT 'N/A';`);
+    } catch (e) { /* column exists */ }
+
+    // Create debt_payments table to track debt settlement history
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS debt_payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trip_id INTEGER NOT NULL,
+            debtor_user_id INTEGER NOT NULL,
+            creditor_user_id INTEGER NOT NULL,
+            amount INTEGER NOT NULL,
+            payment_date TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            reference_transaction_id INTEGER,
+            notes TEXT,
+            FOREIGN KEY(trip_id) REFERENCES trips(id) ON DELETE CASCADE,
+            FOREIGN KEY(debtor_user_id) REFERENCES users(id),
+            FOREIGN KEY(creditor_user_id) REFERENCES users(id),
+            FOREIGN KEY(reference_transaction_id) REFERENCES transactions(id)
         );
     `);
     
@@ -181,6 +209,14 @@ function runMigrations() {
             GROUP BY transaction_id, user_id
         );
     `);
+
+    // Migration: Add is_debt and debt_status columns to transaction_splits
+    try {
+        db.exec(`ALTER TABLE transaction_splits ADD COLUMN is_debt INTEGER NOT NULL DEFAULT 0;`);
+    } catch (e) { /* column may already exist */ }
+    try {
+        db.exec(`ALTER TABLE transaction_splits ADD COLUMN debt_status TEXT NOT NULL DEFAULT 'OPEN';`);
+    } catch (e) { /* column may already exist */ }
 
     console.log('✅ Database migrations completed successfully');
 }

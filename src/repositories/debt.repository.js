@@ -114,6 +114,42 @@ class DebtRepository {
             throw new DatabaseError(`Failed to fetch trip transfers: ${err.message}`);
         }
     }
+
+    /**
+     * Record a debt payment
+     */
+    recordDebtPayment(tripId, debtorUserId, creditorUserId, amount, referenceTransactionId, notes) {
+        const db = getDb();
+        try {
+            return db.prepare(`
+                INSERT INTO debt_payments (trip_id, debtor_user_id, creditor_user_id, amount, reference_transaction_id, notes)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `).run(tripId, debtorUserId, creditorUserId, amount, referenceTransactionId, notes);
+        } catch (err) {
+            throw new DatabaseError(`Failed to record debt payment: ${err.message}`);
+        }
+    }
+
+    /**
+     * Update debt status in transaction_splits
+     */
+    updateDebtStatus(tripId, debtorUserId, creditorUserId, newStatus) {
+        const db = getDb();
+        try {
+            return db.prepare(`
+                UPDATE transaction_splits
+                SET debt_status = ?
+                WHERE transaction_id IN (
+                    SELECT t.id FROM transactions t
+                    WHERE t.trip_id = ? AND t.paid_by_user_id = ?
+                )
+                AND user_id = ?
+                AND is_debt = 1
+            `).run(newStatus, tripId, creditorUserId, debtorUserId);
+        } catch (err) {
+            throw new DatabaseError(`Failed to update debt status: ${err.message}`);
+        }
+    }
 }
 
 module.exports = new DebtRepository();

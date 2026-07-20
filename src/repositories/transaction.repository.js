@@ -5,7 +5,7 @@ class TransactionRepository {
     /**
      * Create a transaction and its splits in a single SQLite transaction
      */
-    createTransactionWithSplits(txData, splits, auditLogData) {
+    createTransactionWithSplits(txData, splits, auditLogData, isDebtTransaction = false, paidByUserId = null) {
         const db = getDb();
         
         const execute = db.transaction(() => {
@@ -38,8 +38,8 @@ class TransactionRepository {
             // 2. Insert splits if any
             if (splits && splits.length > 0) {
                 const splitStmt = db.prepare(`
-                    INSERT OR IGNORE INTO transaction_splits (transaction_id, user_id, share_amount)
-                    VALUES (?, ?, ?)
+                    INSERT OR IGNORE INTO transaction_splits (transaction_id, user_id, share_amount, is_debt, debt_status)
+                    VALUES (?, ?, ?, ?, ?)
                 `);
                 
                 // Deduplicate splits by user_id before inserting (last one wins)
@@ -48,7 +48,12 @@ class TransactionRepository {
                 );
                 
                 for (const split of uniqueSplits) {
-                    splitStmt.run(transactionId, split.userId, split.shareAmount);
+                    // For debt transactions: payer pays full, other members have is_debt=1
+                    // Payer (paid_by_user_id) gets is_debt=0 (they paid)
+                    // Other members get is_debt=1 with debt_status='OPEN'
+                    const isDebt = isDebtTransaction && split.userId !== paidByUserId ? 1 : 0;
+                    const debtStatus = isDebt ? 'OPEN' : 'NONE';
+                    splitStmt.run(transactionId, split.userId, split.shareAmount, isDebt, debtStatus);
                 }
             }
             
