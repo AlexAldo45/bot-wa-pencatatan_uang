@@ -57,9 +57,7 @@ function initializeWhatsapp() {
                 '--disable-gpu',
                 '--disable-software-rasterizer',
                 '--disable-extensions',
-                '--no-first-run',
-                '--no-zygote',
-                '--single-process'
+                '--no-first-run'
             ]
         }
     });
