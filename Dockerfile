@@ -57,5 +57,10 @@ COPY . .
 # Ensure storage directories exist
 RUN mkdir -p data logs .wwebjs_auth .wwebjs_cache
 
-# Start application
+# Copy and set entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Use entrypoint to clean lock files before starting
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["npm", "start"]
