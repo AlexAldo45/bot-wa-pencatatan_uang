@@ -19,10 +19,10 @@ const transactionIntentSchema = z.object({
         "UNKNOWN"
     ]),
 
-    type: z.enum([
-        "EXPENSE",
-        "TRANSFER"
-    ]).nullable().optional().default(null),
+    type: z.preprocess(
+        val => (val === '' || val === undefined) ? null : val,
+        z.enum(["EXPENSE", "TRANSFER"]).nullable().optional().default(null)
+    ),
 
     transactions: z.array(
         z.object({
@@ -63,29 +63,25 @@ const transactionIntentSchema = z.object({
             .default(null)
     ),
 
-    description: z.string()
-        .max(255)
-        .nullable()
-        .optional()
-        .default(null),
+    description: z.preprocess(
+        val => (val === '' || val === undefined) ? null : val,
+        z.string().max(255).nullable().optional().default(null)
+    ),
 
-    category: z.string()
-        .max(100)
-        .nullable()
-        .optional()
-        .default(null),
+    category: z.preprocess(
+        val => (val === '' || val === undefined) ? null : val,
+        z.string().max(100).nullable().optional().default(null)
+    ),
 
-    paid_by: z.string()
-        .max(100)
-        .nullable()
-        .optional()
-        .default(null),
+    paid_by: z.preprocess(
+        val => (val === '' || val === undefined) ? null : val,
+        z.string().max(100).nullable().optional().default(null)
+    ),
 
-    split_type: z.enum([
-        "NONE",
-        "EQUAL",
-        "CUSTOM"
-    ]).nullable().optional().default(null),
+    split_type: z.preprocess(
+        val => (val === '' || val === undefined) ? null : val,
+        z.enum(["NONE", "EQUAL", "CUSTOM"]).nullable().optional().default(null)
+    ),
 
     split_members: z.preprocess(
         val => val === null || val === undefined ? [] : val,
