@@ -171,6 +171,17 @@ function runMigrations() {
         );
     `);
     
+    // Migration: Remove duplicate transaction_splits rows (keep lowest id per transaction_id+user_id)
+    // This fixes production databases where duplicates crept in before the UNIQUE constraint was enforced.
+    db.exec(`
+        DELETE FROM transaction_splits
+        WHERE id NOT IN (
+            SELECT MIN(id)
+            FROM transaction_splits
+            GROUP BY transaction_id, user_id
+        );
+    `);
+
     console.log('✅ Database migrations completed successfully');
 }
 

@@ -38,11 +38,16 @@ class TransactionRepository {
             // 2. Insert splits if any
             if (splits && splits.length > 0) {
                 const splitStmt = db.prepare(`
-                    INSERT INTO transaction_splits (transaction_id, user_id, share_amount)
+                    INSERT OR IGNORE INTO transaction_splits (transaction_id, user_id, share_amount)
                     VALUES (?, ?, ?)
                 `);
                 
-                for (const split of splits) {
+                // Deduplicate splits by user_id before inserting (last one wins)
+                const uniqueSplits = Object.values(
+                    splits.reduce((acc, s) => ({ ...acc, [s.userId]: s }), {})
+                );
+                
+                for (const split of uniqueSplits) {
                     splitStmt.run(transactionId, split.userId, split.shareAmount);
                 }
             }
