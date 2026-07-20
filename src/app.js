@@ -70,11 +70,17 @@ async function main() {
     });
 
     process.on('unhandledRejection', (reason, promise) => {
-        logger.fatal({ 
-            error: reason instanceof Error ? reason.message : String(reason), 
-            stack: reason instanceof Error ? reason.stack : undefined 
-        }, 'Unhandled Promise Rejection detected!');
-        shutdown('UNHANDLED_REJECTION');
+        const message = reason instanceof Error ? reason.message : String(reason);
+        const stack = reason instanceof Error ? reason.stack : undefined;
+
+        // Chromium/Puppeteer launch errors are non-recoverable, shutdown gracefully
+        if (message && (message.includes('Failed to launch the browser') || message.includes('ECONNREFUSED'))) {
+            logger.fatal({ error: message, stack }, 'Critical browser launch failure. Shutting down...');
+            shutdown('UNHANDLED_REJECTION');
+        } else {
+            // Log but don't shutdown for other unhandled rejections (e.g. transient network errors)
+            logger.error({ error: message, stack }, 'Unhandled Promise Rejection (non-fatal, continuing...)');
+        }
     });
 }
 
