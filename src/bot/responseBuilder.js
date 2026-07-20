@@ -48,7 +48,8 @@ class ResponseBuilder {
         return msg;
     }
 
-    buildTransactionCreated(tx, emoji) {
+    buildTransactionCreated(tx) {
+        const emoji = getCategoryEmoji(tx.category_name || tx.category || 'Lainnya');
         return `✅ Transaksi berhasil dicatat!\n\n${emoji} *${tx.description}*\n💰 *${formatCurrency(tx.amount)}*\n👤 Oleh: ${tx.paid_by_name}\n📅 ${tx.transaction_date}\n🏷️ ${tx.category_name || 'Lainnya'}\n🔖 Kode: \`${tx.transaction_code}\``;
     }
 
@@ -142,6 +143,13 @@ class ResponseBuilder {
         });
         msg += `\n\n*Simpan semua transaksi di atas?*\n\nBalas dengan mengetik:\n*YA* atau *TIDAK*`;
         return msg;
+    }
+
+    buildPendingConfirmation(aiResult) {
+        const emoji = getCategoryEmoji(aiResult.category);
+        const amount = formatCurrency(aiResult.amount || 0);
+        const desc = aiResult.description || 'Transaksi';
+        return `🤔 *Konfirmasi Transaksi*\n\n${emoji} *${desc}*\n💰 *${amount}*\n\n*Simpan transaksi ini?*\n\nBalas dengan mengetik:\n*YA* atau *TIDAK*`;
     }
 
     buildError(errorCode) {

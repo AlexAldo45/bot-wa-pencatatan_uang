@@ -10,7 +10,7 @@ module.exports = {
             case 'buat': {
                 const name = args.slice(1).join(' ');
                 const result = await tripService.createTrip(name, userId, chatId, displayName);
-                return responseBuilder.buildCreateTrip(result.trip.trip_code, result.trip.name, result.ownerNickname);
+                return responseBuilder.buildTripCreated({ name: result.trip.name, code: result.trip.trip_code });
             }
             case 'gabung': {
                 const code = args[1] ? args[1].toUpperCase() : '';
@@ -18,7 +18,7 @@ module.exports = {
                     throw new ValidationError('Format salah. Gunakan: `!trip gabung TRIP-XXXXX`');
                 }
                 const result = await tripService.joinTrip(code, userId, chatId, displayName);
-                return responseBuilder.buildJoinTrip(result.trip.name, result.nickname, result.alreadyMember);
+                return responseBuilder.buildTripJoined({ name: result.trip.name, code: result.trip.trip_code }, result.alreadyMember);
             }
             case 'pilih': {
                 const code = args[1] ? args[1].toUpperCase() : '';
