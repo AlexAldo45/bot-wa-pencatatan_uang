@@ -30,6 +30,33 @@ function getLocalDateString(date = new Date(), timezone = config.timezone) {
 }
 
 /**
+ * Get date-time string in YYYY-MM-DD HH:mm:ss format for a given Date and timezone
+ */
+function getLocalDateTimeString(date = new Date(), timezone = config.timezone) {
+    try {
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: timezone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+        const parts = formatter.formatToParts(date);
+        const map = {};
+        parts.forEach(p => { map[p.type] = p.value; });
+        return `${map.year}-${map.month}-${map.day} ${map.hour}:${map.minute}:${map.second}`;
+    } catch (err) {
+        // Fallback to UTC-based local date-time if timezone is invalid
+        const offset = date.getTimezoneOffset();
+        const adjustedDate = new Date(date.getTime() - (offset * 60 * 1000));
+        return adjustedDate.toISOString().replace('T', ' ').split('.')[0];
+    }
+}
+
+/**
  * Parse a relative date expression (e.g. "hari ini", "kemarin", "2 hari lalu")
  * and return it in YYYY-MM-DD format.
  */
@@ -85,6 +112,7 @@ function formatFriendlyDate(dateString) {
 
 module.exports = {
     getLocalDateString,
+    getLocalDateTimeString,
     parseRelativeDate,
     formatFriendlyDate,
 };

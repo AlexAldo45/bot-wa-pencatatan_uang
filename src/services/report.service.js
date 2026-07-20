@@ -17,12 +17,30 @@ class ReportService {
             `).get(tripId, userId);
 
             // Get total expenses consumed by the user
+            // = sum of their split amounts (if split exists for this user)
+            // + full amount of transactions they paid with NO splits at all
             const expenseConsumedRow = db.prepare(`
-                SELECT COALESCE(SUM(ts.share_amount), 0) as total
-                FROM transaction_splits ts
-                JOIN transactions t ON ts.transaction_id = t.id
-                WHERE t.trip_id = ? AND t.status = 'ACTIVE' AND t.type = 'EXPENSE' AND ts.user_id = ?
-            `).get(tripId, userId);
+                SELECT COALESCE(SUM(share), 0) as total FROM (
+                    -- Case 1: user has an explicit split entry
+                    SELECT ts.share_amount as share
+                    FROM transaction_splits ts
+                    JOIN transactions t ON ts.transaction_id = t.id
+                    WHERE t.trip_id = ? AND t.status = 'ACTIVE' AND t.type = 'EXPENSE'
+                      AND ts.user_id = ?
+                    
+                    UNION ALL
+                    
+                    -- Case 2: transaction has NO splits at all, and user is the payer
+                    SELECT t.amount as share
+                    FROM transactions t
+                    WHERE t.trip_id = ? AND t.status = 'ACTIVE' AND t.type = 'EXPENSE'
+                      AND t.paid_by_user_id = ?
+                      AND NOT EXISTS (
+                          SELECT 1 FROM transaction_splits ts2
+                          WHERE ts2.transaction_id = t.id
+                      )
+                )
+            `).get(tripId, userId, tripId, userId);
 
             // Get active transaction count involving the user
             const countRow = db.prepare(`

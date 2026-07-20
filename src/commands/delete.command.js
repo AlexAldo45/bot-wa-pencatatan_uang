@@ -27,10 +27,12 @@ module.exports = {
         }
         
         if (action === 'koreksi') {
-            const tx = await transactionService.deleteLastTransaction(trip.id, userId);
-            return `🗑️ Transaksi terakhir berhasil dikoreksi (dihapus):
-            
-*${tx.transaction_code}* | *${tx.description}* (${formatCurrency(tx.amount)})`;
+            const deletedTxs = await transactionService.deleteLastTransaction(trip.id, userId);
+            const txList = Array.isArray(deletedTxs) ? deletedTxs : [deletedTxs];
+            const lines = txList.map(tx =>
+                `*${tx.transaction_code}* | *${tx.description}* (${formatCurrency(tx.amount)})`
+            ).join('\n');
+            return `🗑️ *${txList.length} Transaksi* berhasil dikoreksi (dihapus):\n\n${lines}`;
         }
         
         throw new ValidationError('Aksi penghapusan tidak dikenal');

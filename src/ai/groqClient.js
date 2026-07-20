@@ -25,7 +25,7 @@ function getGroqClient() {
 /**
  * Execute request with timeout
  */
-async function withTimeout(promise, timeoutMs = 15000) {
+async function withTimeout(promise, timeoutMs = 30000) {
     let timer;
     const timeoutPromise = new Promise((_, reject) => {
         timer = setTimeout(() => reject(new Error('Groq request timed out')), timeoutMs);
@@ -59,12 +59,12 @@ async function getChatCompletion(messages, options = {}) {
                 temperature,
                 response_format: options.jsonMode ? { type: "json_object" } : undefined
             }),
-            15000 // 15 seconds timeout
+            30000 // 30 seconds timeout
         );
     };
 
     let attempt = 0;
-    const maxAttempts = 2;
+    const maxAttempts = 3;
     const baseDelay = 1000;
 
     while (attempt < maxAttempts) {

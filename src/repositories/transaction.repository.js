@@ -132,6 +132,36 @@ class TransactionRepository {
     }
 
     /**
+     * Get all transactions in the same batch (created within 5 seconds of the most recent one)
+     */
+    getLastBatchTransactionsByUser(tripId, userId) {
+        const db = getDb();
+        try {
+            // Get the most recent transaction's created_at
+            const last = db.prepare(`
+                SELECT created_at FROM transactions
+                WHERE trip_id = ? AND created_by_user_id = ? AND status = 'ACTIVE'
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+            `).get(tripId, userId);
+
+            if (!last) return [];
+
+            // Fetch all transactions created within 5 seconds of that timestamp
+            const stmt = db.prepare(`
+                SELECT * FROM transactions
+                WHERE trip_id = ? AND created_by_user_id = ? AND status = 'ACTIVE'
+                  AND created_at >= datetime(?, '-5 seconds')
+                ORDER BY created_at DESC, id DESC
+            `);
+            return stmt.all(tripId, userId, last.created_at);
+        } catch (err) {
+            throw new DatabaseError(`Failed to get last batch transactions: ${err.message}`);
+        }
+    }
+
+
+    /**
      * Update transaction status (e.g. for soft-delete/restore)
      */
     updateTransactionStatus(id, status, actorUserId, action) {

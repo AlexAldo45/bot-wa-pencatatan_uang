@@ -22,6 +22,9 @@ const envSchema = z.object({
     BACKUP_ENABLED: z.enum(['true', 'false']).default('true'),
     BACKUP_INTERVAL_HOURS: z.coerce.number().default(24),
     MAX_MESSAGE_LENGTH: z.coerce.number().default(2000),
+    // Google Sheets (optional)
+    GOOGLE_SHEETS_CREDENTIALS: z.string().optional(),
+    GOOGLE_SHEETS_SPREADSHEET_ID: z.string().optional(),
 });
 
 // Validate environment variables
@@ -48,6 +51,10 @@ const config = {
     backupEnabled: parsed.data.BACKUP_ENABLED === 'true',
     backupIntervalHours: parsed.data.BACKUP_INTERVAL_HOURS,
     maxMessageLength: parsed.data.MAX_MESSAGE_LENGTH,
+    googleSheets: {
+        credentials: parsed.data.GOOGLE_SHEETS_CREDENTIALS,
+        spreadsheetId: parsed.data.GOOGLE_SHEETS_SPREADSHEET_ID
+    }
 };
 
 module.exports = config;

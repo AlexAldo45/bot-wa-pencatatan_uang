@@ -19,7 +19,8 @@ const commands = {
     'kategori': require('../commands/category.command'),
     'ubah': require('../commands/edit.command'),
     'alias': require('../commands/alias.command'),
-    'export': require('../commands/export.command')
+    'export': require('../commands/export.command'),
+    'syncsheet': require('../commands/sheets.command')
 };
 
 class CommandRouter {

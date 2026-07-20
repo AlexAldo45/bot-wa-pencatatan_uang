@@ -229,7 +229,7 @@ class MessageHandler {
                 const user = db.prepare('SELECT id FROM users WHERE whatsapp_id = ?').get(senderId);
                 if (!user) return 'Kamu belum terdaftar.';
                 const summary = reportService.getSummary(activeTrip.id, user.id);
-                return responseBuilder.buildSummary(activeTrip.name, summary);
+                return responseBuilder.buildSummary(activeTrip.name, [{ nickname: 'Anda', ...summary }]);
             }
 
             case 'GET_DEBT': {
@@ -270,6 +270,7 @@ class MessageHandler {
                 const txList = aiResult.transactions.map(item => ({
                     type: item.type || 'EXPENSE',
                     amount: item.amount,
+                    grandTotal: item.grand_total || null,
                     description: item.description,
                     category: item.category,
                     paidBy: item.paid_by,
@@ -278,6 +279,29 @@ class MessageHandler {
                     transactionDate: item.transaction_date,
                     originalMessage
                 }));
+
+                // Server-side correction using grand_total:
+                // Group transactions by description. For groups sharing the same grand_total,
+                // verify SELF's amount = grand_total - sum(others). Fix if wrong.
+                const byDesc = {};
+                for (const tx of txList) {
+                    if (!tx.grandTotal) continue;
+                    const key = (tx.description || '').toLowerCase().trim();
+                    if (!byDesc[key]) byDesc[key] = [];
+                    byDesc[key].push(tx);
+                }
+                for (const group of Object.values(byDesc)) {
+                    if (group.length < 2) continue;
+                    const selfTx = group.find(tx => !tx.paidBy || tx.paidBy === 'SELF');
+                    if (!selfTx) continue;
+                    const grandTotal = selfTx.grandTotal;
+                    const otherSum = group.filter(tx => tx !== selfTx).reduce((s, tx) => s + tx.amount, 0);
+                    const correctSelf = grandTotal - otherSum;
+                    if (correctSelf > 0 && selfTx.amount !== correctSelf) {
+                        console.log(`[BATCH FIX] ${selfTx.description}: SELF ${selfTx.amount} → ${correctSelf} (grand_total=${grandTotal}, others=${otherSum})`);
+                        selfTx.amount = correctSelf;
+                    }
+                }
 
                 const isConfirmRequired = aiResult.confidence < 0.90 || aiResult.needs_confirmation;
 

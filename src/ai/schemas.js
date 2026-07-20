@@ -28,6 +28,7 @@ const transactionIntentSchema = z.object({
         z.object({
             type: z.enum(["EXPENSE", "TRANSFER"]).default("EXPENSE"),
             amount: z.number().int().positive(),
+            grand_total: z.number().int().positive().nullable().optional().default(null),
             description: z.string().max(255),
             category: z.string().max(100).nullable().optional().default(null),
             paid_by: z.string().max(100).nullable().optional().default(null),
