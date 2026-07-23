@@ -29,7 +29,7 @@ module.exports = {
 
             // 2. Riwayat Transaksi (detail per anggota)
             const txs = db.prepare(`
-                SELECT t.transaction_code, t.transaction_date, t.type, t.description,
+                SELECT t.id, t.transaction_code, t.transaction_date, t.type, t.description,
                        COALESCE(c.name, 'Lainnya') as category, t.amount,
                        p.nickname as paid_by
                 FROM transactions t
@@ -63,6 +63,9 @@ module.exports = {
                 }
             }
             await sheetsService.fullSync(spreadsheetId, 'Transaksi', txRows, headerTx);
+
+            // Delete Utang Piutang tab if it exists
+            await sheetsService.deleteSheetIfExists(spreadsheetId, 'Utang Piutang');
 
             // 4. Per-member transaction sheets
             const headerMemberTx = ['Kode', 'Tanggal & Waktu', 'Tipe', 'Deskripsi', 'Kategori', 'Nominal Total (Rp)', 'Dibayar Oleh', 'Bagian (Rp)', 'Kondisi'];

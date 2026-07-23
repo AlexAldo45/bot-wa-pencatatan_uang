@@ -86,6 +86,33 @@ class SheetsService {
     }
 
     /**
+     * Delete a sheet (tab) if it exists.
+     */
+    async deleteSheetIfExists(spreadsheetId, sheetName) {
+        try {
+            await this.ensureInitialized();
+            const meta = await this.sheets.spreadsheets.get({ spreadsheetId, fields: 'sheets(properties(sheetId,title))' });
+            if (!meta.data.sheets) return;
+            const targetSheet = meta.data.sheets.find(s => s.properties.title === sheetName);
+            if (targetSheet) {
+                const sheetId = targetSheet.properties.sheetId;
+                await this.sheets.spreadsheets.batchUpdate({
+                    spreadsheetId,
+                    requestBody: {
+                        requests: [{
+                            deleteSheet: {
+                                sheetId: sheetId
+                            }
+                        }]
+                    }
+                });
+            }
+        } catch (err) {
+            console.warn(`Could not delete sheet "${sheetName}" (non-fatal):`, err.message);
+        }
+    }
+
+    /**
      * Full sync: replace entire sheet content with fresh data (header + rows).
      * Clears the sheet first to ensure deleted rows are actually removed.
      */

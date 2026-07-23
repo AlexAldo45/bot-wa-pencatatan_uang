@@ -429,10 +429,8 @@ class TransactionService {
                 await sheetsService.fullSync(spreadsheetId, sheetName, memberRows, headerMemberTx);
             }
 
-            // Utang Piutang
-            const debts = debtService.calculateDebts(tripId);
-            const debtRows = debts.length > 0 ? debts.map(d => [d.debtorNickname, d.creditorNickname, d.amount]) : [['Semua Bersih', '-', 0]];
-            await sheetsService.fullSync(spreadsheetId, 'Utang Piutang', debtRows, ['Debitur (Berutang)', 'Kreditur (Diterima)', 'Jumlah (Rp)']);
+            // Delete Utang Piutang sheet if it exists
+            await sheetsService.deleteSheetIfExists(spreadsheetId, 'Utang Piutang');
 
             // Pembayaran Lunas - fetch all TRANSFER transactions
             const transferTxs = db.prepare(`
@@ -578,13 +576,8 @@ class TransactionService {
                 }
             }
 
-            // Update Utang Piutang sheet for TRANSFER (debt/settlement) transactions
-            if (txData.type === 'TRANSFER') {
-                const debts = debtService.calculateDebts(tripId);
-                const debtRows = debts.length > 0 ? debts.map(d => [d.debtorNickname, d.creditorNickname, d.amount]) : [['Semua Bersih', '-', 0]];
-                const headerDebt = ['Debitur (Berutang)', 'Kreditur (Diterima)', 'Jumlah (Rp)'];
-                await sheetsService.fullSync(spreadsheetId, 'Utang Piutang', debtRows, headerDebt);
-            }
+            // Delete Utang Piutang sheet if it still exists
+            await sheetsService.deleteSheetIfExists(spreadsheetId, 'Utang Piutang');
 
             // Update Ringkasan - Total Pengeluaran per anggota
             const members = db.prepare('SELECT id, user_id, nickname FROM trip_members WHERE trip_id = ?').all(tripId);

@@ -3,8 +3,8 @@ const { DatabaseError } = require('../utils/errors');
 
 class DebtRepository {
     /**
-     * Get net balances of all trip members.
-     * Balance = Total amount paid by user (credit) - Total share amount of user (debit).
+     * Get net balances of all trip members for DEBT calculation.
+     * Only counts active debts (is_debt = 1 AND debt_status = 'OPEN') and TRANSFER payments.
      */
     getUserTripBalances(tripId) {
         const db = getDb();
@@ -21,16 +21,20 @@ class DebtRepository {
                 FROM trip_members tm
                 JOIN users u ON tm.user_id = u.id
                 LEFT JOIN (
-                    SELECT paid_by_user_id, SUM(amount) as total_paid
-                    FROM transactions
-                    WHERE trip_id = ? AND status = 'ACTIVE' AND type IN ('EXPENSE', 'TRANSFER')
-                    GROUP BY paid_by_user_id
+                    SELECT t.paid_by_user_id, SUM(ts.share_amount) as total_paid
+                    FROM transaction_splits ts
+                    JOIN transactions t ON ts.transaction_id = t.id
+                    WHERE t.trip_id = ? AND t.status = 'ACTIVE' 
+                      AND (t.type = 'TRANSFER' OR (t.type = 'EXPENSE' AND ts.is_debt = 1 AND ts.debt_status = 'OPEN'))
+                      AND t.paid_by_user_id != ts.user_id
+                    GROUP BY t.paid_by_user_id
                 ) p ON u.id = p.paid_by_user_id
                 LEFT JOIN (
                     SELECT ts.user_id, SUM(ts.share_amount) as total_share
                     FROM transaction_splits ts
                     JOIN transactions t ON ts.transaction_id = t.id
-                    WHERE t.trip_id = ? AND t.status = 'ACTIVE' AND t.type IN ('EXPENSE', 'TRANSFER')
+                    WHERE t.trip_id = ? AND t.status = 'ACTIVE' 
+                      AND (t.type = 'TRANSFER' OR (t.type = 'EXPENSE' AND ts.is_debt = 1 AND ts.debt_status = 'OPEN'))
                     GROUP BY ts.user_id
                 ) s ON u.id = s.user_id
                 WHERE tm.trip_id = ?
@@ -43,6 +47,7 @@ class DebtRepository {
 
     /**
      * Get itemized expenses where the user owes money to others (debit).
+     * Only includes transactions marked as debt (is_debt = 1 AND debt_status = 'OPEN').
      */
     getUserItemizedDebts(tripId, userId) {
         const db = getDb();
@@ -61,6 +66,8 @@ class DebtRepository {
                   AND t.type = 'EXPENSE' 
                   AND ts.user_id = ? 
                   AND t.paid_by_user_id != ?
+                  AND ts.is_debt = 1
+                  AND ts.debt_status = 'OPEN'
                 ORDER BY t.id ASC
             `).all(tripId, userId, userId);
         } catch (err) {
@@ -70,6 +77,7 @@ class DebtRepository {
 
     /**
      * Get itemized expenses where other members owe money to the user (credit).
+     * Only includes transactions marked as debt (is_debt = 1 AND debt_status = 'OPEN').
      */
     getUserItemizedCredits(tripId, userId) {
         const db = getDb();
@@ -88,6 +96,8 @@ class DebtRepository {
                   AND t.type = 'EXPENSE' 
                   AND t.paid_by_user_id = ? 
                   AND ts.user_id != ?
+                  AND ts.is_debt = 1
+                  AND ts.debt_status = 'OPEN'
                 ORDER BY t.id ASC
             `).all(tripId, userId, userId);
         } catch (err) {

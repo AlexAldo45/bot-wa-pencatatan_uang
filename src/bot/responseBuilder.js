@@ -50,14 +50,38 @@ class ResponseBuilder {
 
     buildTransactionCreated(tx) {
         const emoji = getCategoryEmoji(tx.category_name || tx.category || 'Lainnya');
-        return `✅ Transaksi berhasil dicatat!\n\n${emoji} *${tx.description}*\n💰 *${formatCurrency(tx.amount)}*\n👤 Oleh: ${tx.paid_by_name}\n📅 ${tx.transaction_date}\n🏷️ ${tx.category_name || 'Lainnya'}\n🔖 Kode: \`${tx.transaction_code}\``;
+
+        // Check if transaction has splits (multiple members involved)
+        if (tx.splits && tx.splits.length > 1) {
+            let msg = `✅ 1 Transaksi berhasil dicatat!\n\n`;
+            msg += `1. ${emoji} *${tx.description}* - *${formatCurrency(tx.amount)}* (Kode: \`${tx.transaction_code}\`) dibagi ke anggota:\n`;
+
+            tx.splits.forEach(split => {
+                const memberName = split.nickname || split.display_name || 'Unknown';
+                msg += `  - ${memberName}: ${formatCurrency(split.share_amount)}\n`;
+            });
+
+            return msg.trim();
+        }
+
+        // Single payer / no splits - original format
+        return `✅ 1 Transaksi berhasil dicatat!\n\n1. ${emoji} *${tx.description}* - *${formatCurrency(tx.amount)}* (Kode: \`${tx.transaction_code}\`)\n👤 Oleh: ${tx.paid_by_name}`;
     }
 
     buildBatchTransactionsCreated(createdTxs) {
         let msg = `✅ *${createdTxs.length} Transaksi* berhasil dicatat!\n`;
         createdTxs.forEach((tx, i) => {
-            const emoji = getCategoryEmoji(tx.category);
+            const emoji = getCategoryEmoji(tx.category_name || tx.category || 'Lainnya');
             msg += `\n${i + 1}. ${emoji} *${tx.description}* - *${formatCurrency(tx.amount)}* (Kode: \`${tx.transaction_code}\`)`;
+
+            // Show split members if the transaction was divided
+            if (tx.splits && tx.splits.length > 1) {
+                msg += ` dibagi ke anggota:`;
+                tx.splits.forEach(split => {
+                    const memberName = split.nickname || split.display_name || 'Unknown';
+                    msg += `\n  - ${memberName}: ${formatCurrency(split.share_amount)}`;
+                });
+            }
         });
         return msg;
     }
