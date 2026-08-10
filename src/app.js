@@ -1,6 +1,6 @@
 const logger = require('./utils/logger');
 const { runMigrations } = require('./database/migrate');
-const { initializeWhatsapp } = require('./bot/whatsapp');
+const { initializeWhatsapp, stopHeartbeat } = require('./bot/whatsapp');
 const { close: closeDb } = require('./database/database');
 const backupJob = require('./jobs/backup.job');
 const cleanupJob = require('./jobs/cleanup.job');
@@ -36,6 +36,7 @@ async function main() {
         // Stop jobs
         backupJob.stop();
         cleanupJob.stop();
+        stopHeartbeat();
 
         // Close WhatsApp client connection
         if (client) {
