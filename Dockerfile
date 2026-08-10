@@ -44,6 +44,15 @@ RUN apt-get update && apt-get install -y \
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
+# Cap Node.js heap to 512MB to prevent OOM on low-RAM devices
+ENV NODE_OPTIONS="--max-old-space-size=512"
+
+# Reduce glibc memory fragmentation (significant RAM saving on Linux)
+ENV MALLOC_ARENA_MAX=2
+
+# Set timezone (avoids repeated timezone lookups)
+ENV TZ=Asia/Jakarta
+
 # Set working directory
 WORKDIR /usr/src/app
 

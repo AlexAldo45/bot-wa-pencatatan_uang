@@ -10,11 +10,65 @@ let heartbeatInterval = null;
 let lastMessageReceivedAt = Date.now();
 let isReady = false;
 
-// Max time (ms) without incoming message before forcing process restart
-// 2 hours - WhatsApp typically sends some traffic every ~1 hour if active
-const HEALTH_CHECK_MAX_IDLE_MS = 2 * 60 * 60 * 1000;
-// Heartbeat interval: check every 5 minutes
-const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
+// Max idle time before forcing process restart (4 hours)
+const HEALTH_CHECK_MAX_IDLE_MS = 4 * 60 * 60 * 1000;
+// Heartbeat interval: check every 10 minutes (reduced CPU wakeups)
+const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;
+
+/**
+ * Aggressive Chromium flags for low-RAM devices (STB with 1.7GB RAM).
+ * These disable all rendering/media features not needed for a headless WA bot.
+ */
+const CHROMIUM_LOW_RAM_ARGS = [
+    // Security sandbox (required for Docker/non-root)
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+
+    // Memory saving - disable shared memory (critical for Docker)
+    '--disable-dev-shm-usage',
+
+    // Disable ALL rendering/GPU (not needed for headless WA)
+    '--disable-gpu',
+    '--disable-software-rasterizer',
+    '--disable-gpu-compositing',
+    '--disable-gpu-rasterization',
+    '--disable-gpu-sandbox',
+
+    // Disable media / images (WA bot only needs text/JSON messages)
+    '--disable-accelerated-video-decode',
+    '--disable-accelerated-video-encode',
+    '--disable-background-media-suspend',
+    '--blink-settings=imagesEnabled=false',
+
+    // Reduce process count (use single process model where possible)
+    '--process-per-site',
+    '--disable-site-isolation-trials',
+
+    // Disable unused browser features
+    '--disable-extensions',
+    '--disable-plugins',
+    '--disable-default-apps',
+    '--disable-sync',
+    '--disable-translate',
+    '--disable-background-networking',
+    '--disable-background-timer-throttling',
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+    '--disable-hang-monitor',
+    '--disable-prompt-on-repost',
+    '--disable-client-side-phishing-detection',
+    '--disable-component-update',
+    '--disable-domain-reliability',
+    '--disable-features=AudioServiceOutOfProcess,IsolateOrigins,site-per-process,TranslateUI,BlinkGenPropertyTrees',
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--password-store=basic',
+    '--use-mock-keychain',
+    '--mute-audio',
+
+    // Cap JavaScript heap size to 512MB
+    '--js-flags=--max-old-space-size=512',
+];
 
 /**
  * Remove Chromium SingletonLock files that get left behind on unclean restarts.
@@ -59,15 +113,7 @@ function initializeWhatsapp() {
         }),
         puppeteer: {
             headless: true,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--disable-software-rasterizer',
-                '--disable-extensions',
-                '--no-first-run'
-            ]
+            args: CHROMIUM_LOW_RAM_ARGS
         }
     });
 
