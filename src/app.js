@@ -5,8 +5,23 @@ const { close: closeDb } = require('./database/database');
 const backupJob = require('./jobs/backup.job');
 const cleanupJob = require('./jobs/cleanup.job');
 
+const { name, version } = require('../package.json');
+
+function printBanner() {
+    const line = '═'.repeat(52);
+    const now = new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
+    console.log(`\n╔${line}╗`);
+    console.log(`║  🤖  ${name.toUpperCase().padEnd(45)}║`);
+    console.log(`║  📦  Versi   : v${version.padEnd(41)}║`);
+    console.log(`║  🟢  Node.js : ${process.version.padEnd(41)}║`);
+    console.log(`║  🌍  Env     : ${(process.env.NODE_ENV || 'development').padEnd(41)}║`);
+    console.log(`║  🕐  Mulai   : ${now.padEnd(41)}║`);
+    console.log(`╚${line}╝\n`);
+}
+
 async function main() {
-    logger.info('Starting TripWallet AI WhatsApp Bot...');
+    printBanner();
+    logger.info({ version }, 'Starting TripWallet AI WhatsApp Bot...');
 
     // 1. Run migrations
     try {

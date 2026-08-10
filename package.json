@@ -1,6 +1,6 @@
 {
   "name": "tripwallet-ai",
-  "version": "1.0.0",
+  "version": "1.4.0",
   "description": "WhatsApp Bot for travel expense tracking using Groq AI",
   "main": "src/app.js",
   "scripts": {
