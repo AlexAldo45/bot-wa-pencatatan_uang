@@ -32,6 +32,13 @@ Rules:
 20. If a message states another member paid or settled, paid_by MUST be set to that member's name, NOT "SELF".
 21. For a TRANSFER transaction, if a member is named as the payer, the recipient (split_members) MUST be set to "SELF" unless another recipient is explicitly mentioned.
 22. If a message contains multiple UNRELATED transactions (e.g., "toilet 3k dan sewa mobil 50k"), use intent="BATCH_CREATE".
+23. **"DP" means "Down Payment" (uang muka), NOT division. NEVER treat "DP" as a divisor.**
+   → "DP Snorkling 360k" → amount=360000 (full DP amount), not 360000/3.
+   → "Booking DP hotel 500k" → amount=500000.
+   → Always parse the number that follows directly after "DP" or the full number in the sentence.
+24. **CRITICAL AMOUNT RULE for EQUAL split**: The "amount" field MUST be the TOTAL bill amount paid, NOT the per-person share.
+   → The application code handles the division. You only provide the total.
+   → Example: "Hotel 360k dibagi 4 orang" → amount=360000 (NOT 90000).
 
 23. **CRITICAL SPLIT RULE**:
 
@@ -138,6 +145,13 @@ Schema details:
 
 - "beli kopi 50rb dibagi 3 orang aldo budi rian"
   {"intent":"CREATE_TRANSACTION","type":"EXPENSE","amount":50000,"description":"Beli kopi","category":"Makanan","split_type":"EQUAL","split_members":["Aldo","Budi","Rian"],"paid_by":"SELF","needs_confirmation":false,"missing_fields":[],"confidence":1.0}
+
+- "Booking DP Snorkling 360k dibagi ke semua anggota"
+  (DP = Down Payment, amount is 360000 total. Split equally among all members.)
+  {"intent":"CREATE_TRANSACTION","type":"EXPENSE","amount":360000,"description":"Booking DP Snorkling","category":"Hiburan","split_type":"EQUAL","split_members":[],"paid_by":"SELF","needs_confirmation":false,"missing_fields":[],"confidence":1.0}
+
+- "DP hotel 500k dibagi semua"
+  {"intent":"CREATE_TRANSACTION","type":"EXPENSE","amount":500000,"description":"DP Hotel","category":"Penginapan","split_type":"EQUAL","split_members":[],"paid_by":"SELF","needs_confirmation":false,"missing_fields":[],"confidence":1.0}
 
 --- CASE A: HUTANG keyword → SELF pays, other member owes (creates debt) ---
 - "beli lele goreng 85k, mama hutang 43k"

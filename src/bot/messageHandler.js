@@ -479,6 +479,30 @@ class MessageHandler {
                     return '⚠️ Nominal transaksi tidak ditemukan atau tidak valid. Silakan sebutkan nominal uangnya, contoh: "Bayar hotel 200 ribu".';
                 }
 
+                // Safety net: if AI returned an amount far smaller than the largest number in the message,
+                // it likely pre-divided the total. Recover the correct amount from the raw message.
+                if (txData.splitType === 'EQUAL') {
+                    const rawAmounts = [];
+                    // Match patterns like: 360k, 360rb, 360ribu, 360000, 1.5jt, 1,5jt
+                    const numRegex = /(\d+(?:[.,]\d+)?)\s*(k|rb|ribu|jt|juta|m|million)?/gi;
+                    let match;
+                    while ((match = numRegex.exec(originalMessage)) !== null) {
+                        let num = parseFloat(match[1].replace(',', '.'));
+                        const unit = (match[2] || '').toLowerCase();
+                        if (['k', 'rb', 'ribu'].includes(unit)) num *= 1000;
+                        else if (['jt', 'juta', 'm', 'million'].includes(unit)) num *= 1000000;
+                        if (num >= 1000) rawAmounts.push(Math.round(num)); // ignore tiny numbers like "3 orang"
+                    }
+                    if (rawAmounts.length > 0) {
+                        const maxAmount = Math.max(...rawAmounts);
+                        // If AI amount is less than half of the largest number detected, correct it
+                        if (txData.amount < maxAmount / 2) {
+                            logger.warn({ aiAmount: txData.amount, correctedAmount: maxAmount, message: originalMessage }, 'AI under-reported amount for EQUAL split. Correcting to full total.');
+                            txData.amount = maxAmount;
+                        }
+                    }
+                }
+
                 const isConfirmRequired = confidence < 0.90 || aiResult.needs_confirmation;
 
                 if (isConfirmRequired) {
