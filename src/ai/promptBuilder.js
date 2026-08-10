@@ -32,15 +32,15 @@ Rules:
 20. If a message states another member paid or settled, paid_by MUST be set to that member's name, NOT "SELF".
 21. For a TRANSFER transaction, if a member is named as the payer, the recipient (split_members) MUST be set to "SELF" unless another recipient is explicitly mentioned.
 22. If a message contains multiple UNRELATED transactions (e.g., "toilet 3k dan sewa mobil 50k"), use intent="BATCH_CREATE".
-23. **"DP" means "Down Payment" (uang muka), NOT division. NEVER treat "DP" as a divisor.**
-   → "DP Snorkling 360k" → amount=360000 (full DP amount), not 360000/3.
+23. **"DP" means "Down Payment" (uang muka/cicilan), NOT division. NEVER treat "DP" as a divisor or number of people.**
+   → "DP Snorkling 360k" → amount=360000 (the FULL payment amount).
    → "Booking DP hotel 500k" → amount=500000.
-   → Always parse the number that follows directly after "DP" or the full number in the sentence.
-24. **CRITICAL AMOUNT RULE for EQUAL split**: The "amount" field MUST be the TOTAL bill amount paid, NOT the per-person share.
-   → The application code handles the division. You only provide the total.
-   → Example: "Hotel 360k dibagi 4 orang" → amount=360000 (NOT 90000).
+24. **CRITICAL AMOUNT RULE**: The "amount" field is ALWAYS the TOTAL bill amount. NEVER divide it by the number of people.
+   → The application code handles per-person division automatically.
+   → "Hotel 360k dibagi 4 orang" → amount=360000, NOT 90000.
+   → "Snorkling 360k dibagi ke semua anggota" → amount=360000, NOT 120000.
 
-23. **CRITICAL SPLIT RULE**:
+25. **CRITICAL SPLIT RULE** — choose exactly ONE of these cases:
 
    CASE A – "hutang" keyword present next to member + amount:
    → ONE transaction. SELF paid the full bill. Named member OWES their portion.
@@ -48,25 +48,30 @@ Rules:
    → Creates a DEBT entry for the named member.
    → Example: "makan 85k mama hutang 43k" → 1 EXPENSE, Mama owes 43k to SELF.
 
-   CASE B – member + amount WITHOUT "hutang" keyword:
+   CASE B – member name + specific amount WITHOUT "hutang" keyword AND without "dibagi/split" keyword:
    → Each person ALREADY PAID their own share. NO debt created.
    → intent="BATCH_CREATE" with SEPARATE transactions for each person.
    → Each transaction: paid_by = that person, split_type="NONE"
    → Example: "seafood 100k mama 60k aku 40k" → 2 EXPENSE (Mama paid 60k, SELF paid 40k)
+   → ⚠️ CASE B only applies when specific per-person amounts are given AND no split keyword.
 
-   CASE C – "melunasi hutang", "bayar hutang", "lunas hutang", "membayar utang":
+   CASE C – "dibagi", "bagi", "split", "semua", "bersama", "ke semua anggota" keywords:
+   → ONE expense, SELF paid, split EQUALLY among named members or ALL members.
+   → intent="CREATE_TRANSACTION", split_type="EQUAL", amount=FULL total
+   → NEVER use BATCH_CREATE for this case.
+   → Example: "snorkling 360k dibagi ke semua anggota" → 1 EXPENSE, amount=360000, EQUAL split.
+
+   CASE D – "melunasi hutang", "bayar hutang", "lunas hutang", "membayar utang":
    → Debt payment. type="TRANSFER".
 
-24. For EQUAL split, always include ALL named members in split_members array. If "kita", "semua", "bersama" without specific names, split between ALL trip members (leave split_members=[]).
-25. If amount is missing or ambiguous, set needs_confirmation=true and missing_fields=["amount"].
-26. If description is very short (single word OK), still parse it as-is, never reject.
-27. Relative dates: "kemarin"=yesterday, "tadi"=today, "tadi pagi/siang/malam"=today, "lusa"=day after tomorrow. Set transaction_date accordingly.
-28. Currency variations: "50.000", "50,000", "50000", "50k", "50rb", "50ribu", "0.05jt" all mean 50000.
-29. For BATCH_CREATE, each transaction in the "transactions" array MUST include: type, amount, grand_total, description, category, split_type, split_members, paid_by.
-30. Never use split_type="CUSTOM" without providing split_members as an array of {name, amount} objects that sum to the total amount.
-31. **CRITICAL for CASE B (no "hutang")**: Each person's amount = their individual share only. Amounts must sum to grand_total.
-32. In CASE B, always set "grand_total" = the total purchase amount stated in the message. Each "amount" = individual share.
-33. **grand_total field**: In BATCH_CREATE transactions, always include "grand_total" = the total bill amount (e.g. for "ikan 295k mama 193k", grand_total=295000 for both transactions). The "amount" field = individual share for that person.
+26. For EQUAL split (CASE C), leave split_members=[] if "semua" / "ke semua anggota" is used (all members auto-included).
+27. If amount is missing or ambiguous, set needs_confirmation=true and missing_fields=["amount"].
+28. If description is very short (single word OK), still parse it as-is, never reject.
+29. Relative dates: "kemarin"=yesterday, "tadi"=today, "tadi pagi/siang/malam"=today, "lusa"=day after tomorrow. Set transaction_date accordingly.
+30. Currency variations: "50.000", "50,000", "50000", "50k", "50rb", "50ribu", "0.05jt" all mean 50000.
+31. For BATCH_CREATE, each transaction in the "transactions" array MUST include: type, amount, grand_total, description, category, split_type, split_members, paid_by.
+32. Never use split_type="CUSTOM" without providing split_members as an array of {name, amount} objects that sum to the total amount.
+33. **grand_total field** (BATCH_CREATE only): grand_total = total bill, amount = that person's individual share.
 
 Allowed Intents:
 - CREATE_TRANSACTION

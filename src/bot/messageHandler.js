@@ -327,6 +327,32 @@ class MessageHandler {
                     return '⚠️ Tidak ada transaksi yang berhasil dibaca dari pesan Anda.';
                 }
 
+                // Safety net: detect if AI wrongly classified a single EQUAL split as BATCH_CREATE.
+                // Signs: message contains split keywords AND all batch items share the same description
+                // with equal or near-equal amounts (AI divided the total by member count).
+                const msgLower = originalMessage.toLowerCase();
+                const hasSplitKeyword = /\b(dibagi|dibagi ke|bagi|split|semua anggota|ke semua|bersama)\b/.test(msgLower);
+                if (hasSplitKeyword && aiResult.transactions.length > 1) {
+                    const descs = aiResult.transactions.map(t => (t.description || '').toLowerCase().trim());
+                    const allSameDesc = descs.every(d => d === descs[0]);
+                    if (allSameDesc) {
+                        // AI split one expense into per-person rows — collapse back to single EQUAL split
+                        const grandTotal = aiResult.transactions[0].grand_total
+                            || aiResult.transactions.reduce((s, t) => s + (t.amount || 0), 0);
+                        logger.warn({ original: originalMessage, transactions: aiResult.transactions }, 'BATCH_CREATE safety net: collapsing to CREATE_TRANSACTION EQUAL split');
+                        aiResult.intent = 'CREATE_TRANSACTION';
+                        aiResult.type = aiResult.transactions[0].type || 'EXPENSE';
+                        aiResult.amount = grandTotal;
+                        aiResult.description = aiResult.transactions[0].description;
+                        aiResult.category = aiResult.transactions[0].category;
+                        aiResult.split_type = 'EQUAL';
+                        aiResult.split_members = [];
+                        aiResult.paid_by = 'SELF';
+                        // Fall through to CREATE_TRANSACTION below by re-routing
+                        return this.handleAiIntent(client, chatId, senderId, activeTrip, aiResult, originalMessage);
+                    }
+                }
+
                 const user = db.prepare('SELECT id FROM users WHERE whatsapp_id = ?').get(senderId);
                 if (!user) {
                     throw new AuthorizationError('Kamu belum terdaftar di trip mana pun.');
