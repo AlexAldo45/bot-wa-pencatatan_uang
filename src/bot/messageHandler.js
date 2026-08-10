@@ -67,6 +67,19 @@ class MessageHandler {
                 // Insert message ID as processed
                 db.prepare('INSERT INTO processed_messages (whatsapp_message_id) VALUES (?)').run(messageId);
 
+                // Auto-register / update the sender's user record.
+                // This handles two cases:
+                //   a) First-time user: creates their record with real WhatsApp name.
+                //   b) Pre-added member (added by owner via !anggota tambah): their user row already exists
+                //      with display_name=null. We fill in their real name here on first contact.
+                db.prepare(`
+                    INSERT INTO users (whatsapp_id, phone_number, display_name)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(whatsapp_id) DO UPDATE SET
+                        display_name = COALESCE(users.display_name, excluded.display_name),
+                        updated_at = CURRENT_TIMESTAMP
+                `).run(senderId, senderId.split('@')[0], senderName);
+
                 // 4. Rate Limiting (Section 35)
                 if (isRateLimited(senderId)) {
                     await client.sendMessage(chatId, '⚠️ Pesan terlalu cepat. Tunggu beberapa detik lalu coba kembali.');

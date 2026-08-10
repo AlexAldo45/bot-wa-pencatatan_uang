@@ -15,7 +15,7 @@ module.exports = {
                     throw new ValidationError('Format salah. Gunakan: `!anggota tambah 628123456789 Budi`');
                 }
                 const result = await memberService.addMember(trip.id, user.id, phone, nickname);
-                return `👤 *${result.nickname}* (${phone}) berhasil ditambahkan ke trip *${trip.name}*.`;
+                return `👤 *${result.nickname}* (${phone}) berhasil ditambahkan ke trip *${trip.name}*.\n\n💡 _"${result.nickname}" adalah alias untuk memudahkan pembagian biaya. Nama asli akan otomatis terupdate saat mereka mengirim pesan ke bot._`;
             }
             case 'list': {
                 const members = memberService.getTripMembers(trip.id);
