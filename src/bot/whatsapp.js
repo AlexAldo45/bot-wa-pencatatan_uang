@@ -222,6 +222,35 @@ function getPhoneSuffix(phone) {
     return digits.substring(digits.length - 9);
 }
 
+function mergeUsers(db, targetUserId, sourceUserId) {
+    db.transaction(() => {
+        // 1. Update references to target user id
+        db.prepare('UPDATE OR IGNORE trips SET owner_user_id = ? WHERE owner_user_id = ?').run(targetUserId, sourceUserId);
+        
+        // Handle trip_members uniqueness (trip_id, user_id)
+        const targetMemberships = db.prepare('SELECT trip_id FROM trip_members WHERE user_id = ?').all(targetUserId).map(m => m.trip_id);
+        if (targetMemberships.length > 0) {
+            db.prepare(`
+                DELETE FROM trip_members 
+                WHERE user_id = ? AND trip_id IN (${targetMemberships.map(() => '?').join(',')})
+            `).run(sourceUserId, ...targetMemberships);
+        }
+        db.prepare('UPDATE OR IGNORE trip_members SET user_id = ? WHERE user_id = ?').run(targetUserId, sourceUserId);
+        
+        db.prepare('UPDATE OR IGNORE transactions SET created_by_user_id = ? WHERE created_by_user_id = ?').run(targetUserId, sourceUserId);
+        db.prepare('UPDATE OR IGNORE transactions SET paid_by_user_id = ? WHERE paid_by_user_id = ?').run(targetUserId, sourceUserId);
+        db.prepare('UPDATE OR IGNORE transaction_splits SET user_id = ? WHERE user_id = ?').run(targetUserId, sourceUserId);
+        db.prepare('UPDATE OR IGNORE debts SET debtor_user_id = ? WHERE debtor_user_id = ?').run(targetUserId, sourceUserId);
+        db.prepare('UPDATE OR IGNORE debts SET creditor_user_id = ? WHERE creditor_user_id = ?').run(targetUserId, sourceUserId);
+        db.prepare('UPDATE OR IGNORE member_aliases SET member_user_id = ? WHERE member_user_id = ?').run(targetUserId, sourceUserId);
+        db.prepare('UPDATE OR IGNORE audit_logs SET actor_user_id = ? WHERE actor_user_id = ?').run(targetUserId, sourceUserId);
+        db.prepare('UPDATE OR IGNORE pending_actions SET user_id = ? WHERE user_id = ?').run(targetUserId, sourceUserId);
+        
+        // 2. Delete source user
+        db.prepare('DELETE FROM users WHERE id = ?').run(sourceUserId);
+    })();
+}
+
 async function syncMemberJids(client) {
     try {
         const { getDb } = require('../database/database');
@@ -289,11 +318,30 @@ async function syncMemberJids(client) {
 
         let updatedCount = 0;
         for (const user of users) {
+            // Already has @lid JID (most specific format) — do not downgrade or change
+            if (user.whatsapp_id && user.whatsapp_id.endsWith('@lid')) {
+                continue;
+            }
+
             const userPhoneSuffix = getPhoneSuffix(user.phone_number);
             if (!userPhoneSuffix) continue;
 
             const contactJid = JidMap.get(userPhoneSuffix);
             if (contactJid && user.whatsapp_id !== contactJid) {
+                // Handle duplicate JID conflict (e.g. user registered as both @c.us and @lid in separate database rows)
+                const existingUser = db.prepare('SELECT id, display_name FROM users WHERE whatsapp_id = ?').get(contactJid);
+                if (existingUser && existingUser.id !== user.id) {
+                    logger.info({ 
+                        targetUserId: user.id, 
+                        targetName: user.display_name,
+                        sourceUserId: existingUser.id, 
+                        sourceName: existingUser.display_name,
+                        jid: contactJid 
+                    }, 'Merging duplicate users during JID sync');
+                    
+                    mergeUsers(db, user.id, existingUser.id);
+                }
+
                 logger.info({ 
                     userId: user.id,
                     displayName: user.display_name,

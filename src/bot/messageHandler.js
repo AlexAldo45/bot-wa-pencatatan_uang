@@ -37,6 +37,35 @@ function isRateLimited(userId) {
     return timestamps.length > 10;
 }
 
+function mergeUsers(db, targetUserId, sourceUserId) {
+    db.transaction(() => {
+        // 1. Update references to target user id
+        db.prepare('UPDATE OR IGNORE trips SET owner_user_id = ? WHERE owner_user_id = ?').run(targetUserId, sourceUserId);
+        
+        // Handle trip_members uniqueness (trip_id, user_id)
+        const targetMemberships = db.prepare('SELECT trip_id FROM trip_members WHERE user_id = ?').all(targetUserId).map(m => m.trip_id);
+        if (targetMemberships.length > 0) {
+            db.prepare(`
+                DELETE FROM trip_members 
+                WHERE user_id = ? AND trip_id IN (${targetMemberships.map(() => '?').join(',')})
+            `).run(sourceUserId, ...targetMemberships);
+        }
+        db.prepare('UPDATE OR IGNORE trip_members SET user_id = ? WHERE user_id = ?').run(targetUserId, sourceUserId);
+        
+        db.prepare('UPDATE OR IGNORE transactions SET created_by_user_id = ? WHERE created_by_user_id = ?').run(targetUserId, sourceUserId);
+        db.prepare('UPDATE OR IGNORE transactions SET paid_by_user_id = ? WHERE paid_by_user_id = ?').run(targetUserId, sourceUserId);
+        db.prepare('UPDATE OR IGNORE transaction_splits SET user_id = ? WHERE user_id = ?').run(targetUserId, sourceUserId);
+        db.prepare('UPDATE OR IGNORE debts SET debtor_user_id = ? WHERE debtor_user_id = ?').run(targetUserId, sourceUserId);
+        db.prepare('UPDATE OR IGNORE debts SET creditor_user_id = ? WHERE creditor_user_id = ?').run(targetUserId, sourceUserId);
+        db.prepare('UPDATE OR IGNORE member_aliases SET member_user_id = ? WHERE member_user_id = ?').run(targetUserId, sourceUserId);
+        db.prepare('UPDATE OR IGNORE audit_logs SET actor_user_id = ? WHERE actor_user_id = ?').run(targetUserId, sourceUserId);
+        db.prepare('UPDATE OR IGNORE pending_actions SET user_id = ? WHERE user_id = ?').run(targetUserId, sourceUserId);
+        
+        // 2. Delete source user
+        db.prepare('DELETE FROM users WHERE id = ?').run(sourceUserId);
+    })();
+}
+
 class MessageHandler {
     /**
      * Entry point for processing raw WhatsApp messages
@@ -110,11 +139,22 @@ class MessageHandler {
                                     `).get(localPhone, intlPhone, `${localPhone}@%`, `${intlPhone}@%`);
 
                                     if (senderUser) {
-                                        // Update the stored whatsapp_id to the current real senderId
-                                        db.prepare(
-                                            'UPDATE users SET whatsapp_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-                                        ).run(senderId, senderUser.id);
-                                        logger.info({ senderId, userId: senderUser.id }, 'Updated whatsapp_id format for existing user dynamically (lid/c.us mismatch)');
+                                         // Handle duplicate JID conflict dynamically (e.g. user registered as both @c.us and @lid in separate database rows)
+                                         const existingUser = db.prepare('SELECT id FROM users WHERE whatsapp_id = ?').get(senderId);
+                                         if (existingUser && existingUser.id !== senderUser.id) {
+                                             logger.info({ 
+                                                 targetUserId: senderUser.id, 
+                                                 sourceUserId: existingUser.id, 
+                                                 jid: senderId 
+                                             }, 'Merging duplicate users dynamically');
+                                             mergeUsers(db, senderUser.id, existingUser.id);
+                                         }
+
+                                         // Update the stored whatsapp_id to the current real senderId
+                                         db.prepare(
+                                             'UPDATE users SET whatsapp_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+                                         ).run(senderId, senderUser.id);
+                                         logger.info({ senderId, userId: senderUser.id }, 'Updated whatsapp_id format for existing user dynamically (lid/c.us mismatch)');
                                     }
                                 }
                             } catch (contactErr) {
