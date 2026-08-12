@@ -92,20 +92,33 @@ class MessageHandler {
                         // Try to find user by exact whatsapp_id first
                         let senderUser = db.prepare('SELECT id FROM users WHERE whatsapp_id = ?').get(senderId);
 
-                        // If not found, try matching by phone number (handles @lid vs @c.us format mismatch)
+                        // If not found, try matching by contact's phone number (handles @lid vs @c.us format mismatch)
                         // WhatsApp sometimes sends @lid format even if user was registered as @c.us
                         if (!senderUser) {
-                            const phoneNumber = senderId.split('@')[0];
-                            senderUser = db.prepare(
-                                'SELECT id FROM users WHERE phone_number = ? OR whatsapp_id LIKE ?'
-                            ).get(phoneNumber, `${phoneNumber}@%`);
+                            try {
+                                const contact = await msg.getContact();
+                                if (contact && contact.number) {
+                                    const phoneNumber = contact.number;
+                                    // Try to match by phone number in DB (handles local 08... and international 628...)
+                                    const localPhone = phoneNumber.replace(/^62/, '0');
+                                    const intlPhone = phoneNumber.replace(/^0/, '62');
 
-                            if (senderUser) {
-                                // Update the stored whatsapp_id to the current real senderId
-                                db.prepare(
-                                    'UPDATE users SET whatsapp_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-                                ).run(senderId, senderUser.id);
-                                logger.info({ senderId, userId: senderUser.id }, 'Updated whatsapp_id format for existing user (lid/c.us mismatch)');
+                                    senderUser = db.prepare(`
+                                        SELECT id FROM users 
+                                        WHERE phone_number = ? OR phone_number = ? 
+                                           OR whatsapp_id LIKE ? OR whatsapp_id LIKE ?
+                                    `).get(localPhone, intlPhone, `${localPhone}@%`, `${intlPhone}@%`);
+
+                                    if (senderUser) {
+                                        // Update the stored whatsapp_id to the current real senderId
+                                        db.prepare(
+                                            'UPDATE users SET whatsapp_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+                                        ).run(senderId, senderUser.id);
+                                        logger.info({ senderId, userId: senderUser.id }, 'Updated whatsapp_id format for existing user dynamically (lid/c.us mismatch)');
+                                    }
+                                }
+                            } catch (contactErr) {
+                                logger.error({ error: contactErr.message }, 'Failed to get contact details for JID fallback matching');
                             }
                         }
 

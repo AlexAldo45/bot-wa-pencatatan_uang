@@ -237,10 +237,19 @@ async function syncMemberJids(client) {
 
         // 1. Add contacts to map
         for (const c of contacts) {
-            const contactPhone = c.id.user || c.number || '';
-            const suffix = getPhoneSuffix(contactPhone);
-            if (suffix) {
-                JidMap.set(suffix, c.id._serialized);
+            // For LID contacts, c.number is the actual phone number, while c.id.user is the 15-digit LID.
+            // For standard c.us contacts, both c.number and c.id.user contain the phone number.
+            if (c.number) {
+                const suffix = getPhoneSuffix(c.number);
+                if (suffix) {
+                    JidMap.set(suffix, c.id._serialized);
+                }
+            }
+            if (c.id.server === 'c.us') {
+                const suffix = getPhoneSuffix(c.id.user);
+                if (suffix) {
+                    JidMap.set(suffix, c.id._serialized);
+                }
             }
         }
 
@@ -251,9 +260,24 @@ async function syncMemberJids(client) {
                     const chat = await client.getChatById(group.whatsapp_chat_id);
                     if (chat.isGroup) {
                         for (const p of chat.participants) {
-                            const suffix = getPhoneSuffix(p.id.user);
-                            if (suffix) {
-                                JidMap.set(suffix, p.id._serialized);
+                            if (p.id.server === 'c.us') {
+                                const suffix = getPhoneSuffix(p.id.user);
+                                if (suffix) {
+                                    JidMap.set(suffix, p.id._serialized);
+                                }
+                            } else {
+                                // If JID is in @lid format, we need to fetch contact to get the phone number (contact.number)
+                                try {
+                                    const contact = await client.getContactById(p.id._serialized);
+                                    if (contact && contact.number) {
+                                        const suffix = getPhoneSuffix(contact.number);
+                                        if (suffix) {
+                                            JidMap.set(suffix, p.id._serialized);
+                                        }
+                                    }
+                                } catch (e) {
+                                    // ignore cache misses
+                                }
                             }
                         }
                     }
