@@ -386,7 +386,7 @@ class TransactionService {
             `).all(tripId);
 
             // Build Transaksi sheet rows (1 row per split, or 1 row for no-split)
-            const headerTx = ['Kode', 'Tanggal', 'Tipe', 'Deskripsi', 'Kategori', 'Nominal Total (Rp)', 'Dibayar Oleh', 'Anggota', 'Bagian (Rp)'];
+            const headerTx = ['Kode', 'Tanggal & Waktu', 'Tipe', 'Deskripsi', 'Kategori', 'Nominal Total (Rp)', 'Dibayar Oleh', 'Anggota', 'Bagian (Rp)'];
             const txRows = [];
             for (const t of txs) {
                 const splits = db.prepare(`
@@ -506,7 +506,7 @@ class TransactionService {
                 .get(creatorUserId, tripId);
 
             // Build rows for Transaksi sheet (detail per member)
-            const headerTx = ['Kode', 'Tanggal', 'Tipe', 'Deskripsi', 'Kategori', 'Nominal Total (Rp)', 'Dibayar Oleh', 'Anggota', 'Bagian (Rp)'];
+            const headerTx = ['Kode', 'Tanggal & Waktu', 'Tipe', 'Deskripsi', 'Kategori', 'Nominal Total (Rp)', 'Dibayar Oleh', 'Anggota', 'Bagian (Rp)'];
             const txRows = [];
 
             if (txData.splits && txData.splits.length > 0) {
