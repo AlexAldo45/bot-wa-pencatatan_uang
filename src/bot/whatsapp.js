@@ -122,11 +122,12 @@ function initializeWhatsapp() {
         qrcode.generate(qr, { small: true });
     });
 
-    clientInstance.on('ready', () => {
+    clientInstance.on('ready', async () => {
         logger.info('WhatsApp Web Client is ready and authenticated!');
         isReady = true;
         lastMessageReceivedAt = Date.now();
         startHeartbeat();
+        await syncMemberJids(clientInstance);
     });
 
     clientInstance.on('auth_failure', (msg) => {
@@ -212,6 +213,84 @@ function stopHeartbeat() {
     if (heartbeatInterval) {
         clearInterval(heartbeatInterval);
         heartbeatInterval = null;
+    }
+}
+
+function getPhoneSuffix(phone) {
+    if (!phone) return '';
+    const digits = phone.replace(/\D/g, '');
+    return digits.substring(digits.length - 9);
+}
+
+async function syncMemberJids(client) {
+    try {
+        const { getDb } = require('../database/database');
+        const db = getDb();
+        const users = db.prepare("SELECT id, whatsapp_id, phone_number, display_name FROM users").all();
+        if (users.length === 0) return;
+
+        logger.info('Starting contact JID synchronization from WhatsApp client...');
+        const contacts = await client.getContacts();
+        
+        const activeGroups = db.prepare("SELECT whatsapp_chat_id FROM chat_states WHERE active_trip_id IS NOT NULL").all();
+        const JidMap = new Map(); // phone suffix -> JID
+
+        // 1. Add contacts to map
+        for (const c of contacts) {
+            const contactPhone = c.id.user || c.number || '';
+            const suffix = getPhoneSuffix(contactPhone);
+            if (suffix) {
+                JidMap.set(suffix, c.id._serialized);
+            }
+        }
+
+        // 2. Add group participants to map (more reliable for group members)
+        for (const group of activeGroups) {
+            if (group.whatsapp_chat_id.endsWith('@g.us')) {
+                try {
+                    const chat = await client.getChatById(group.whatsapp_chat_id);
+                    if (chat.isGroup) {
+                        for (const p of chat.participants) {
+                            const suffix = getPhoneSuffix(p.id.user);
+                            if (suffix) {
+                                JidMap.set(suffix, p.id._serialized);
+                            }
+                        }
+                    }
+                } catch (gErr) {
+                    logger.warn({ chatId: group.whatsapp_chat_id, error: gErr.message }, 'Could not fetch group participants for JID sync');
+                }
+            }
+        }
+
+        let updatedCount = 0;
+        for (const user of users) {
+            const userPhoneSuffix = getPhoneSuffix(user.phone_number);
+            if (!userPhoneSuffix) continue;
+
+            const contactJid = JidMap.get(userPhoneSuffix);
+            if (contactJid && user.whatsapp_id !== contactJid) {
+                logger.info({ 
+                    userId: user.id,
+                    displayName: user.display_name,
+                    oldJid: user.whatsapp_id, 
+                    newJid: contactJid 
+                }, 'Syncing JID format mismatch');
+                
+                // Update in users table
+                db.prepare('UPDATE users SET whatsapp_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                    .run(contactJid, user.id);
+                    
+                // Update in chat_states table
+                db.prepare('UPDATE chat_states SET whatsapp_chat_id = ?, updated_at = CURRENT_TIMESTAMP WHERE whatsapp_chat_id = ?')
+                    .run(contactJid, user.whatsapp_id);
+                    
+                updatedCount++;
+            }
+        }
+        logger.info({ updatedCount }, 'Contact JID synchronization completed');
+    } catch (err) {
+        logger.error({ error: err.message }, 'Failed to sync member JIDs from contacts');
     }
 }
 
