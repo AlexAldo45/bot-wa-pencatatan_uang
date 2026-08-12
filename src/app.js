@@ -89,12 +89,21 @@ async function main() {
         const message = reason instanceof Error ? reason.message : String(reason);
         const stack = reason instanceof Error ? reason.stack : undefined;
 
-        // Chromium/Puppeteer launch errors are non-recoverable, shutdown gracefully
-        if (message && (message.includes('Failed to launch the browser') || message.includes('ECONNREFUSED'))) {
-            logger.fatal({ error: message, stack }, 'Critical browser launch failure. Shutting down...');
+        // Fatal errors: non-recoverable — exit so Docker restarts the container
+        const isFatal = message && (
+            message.includes('Failed to launch the browser') ||
+            message.includes('ECONNREFUSED') ||
+            message.includes('ERR_NAME_NOT_RESOLVED') ||
+            message.includes('ERR_INTERNET_DISCONNECTED') ||
+            message.includes('ERR_NETWORK_CHANGED') ||
+            message.includes('net::ERR_')
+        );
+
+        if (isFatal) {
+            logger.fatal({ error: message, stack }, 'Fatal network/browser error. Exiting for Docker restart...');
             shutdown('UNHANDLED_REJECTION');
         } else {
-            // Log but don't shutdown for other unhandled rejections (e.g. transient network errors)
+            // Log but don't shutdown for other unhandled rejections
             logger.error({ error: message, stack }, 'Unhandled Promise Rejection (non-fatal, continuing...)');
         }
     });

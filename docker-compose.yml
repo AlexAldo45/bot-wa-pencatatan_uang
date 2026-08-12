@@ -6,6 +6,10 @@ services:
     restart: always
     env_file:
       - .env
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+      - 1.1.1.1
     volumes:
       - ./data:/usr/src/app/data
       - ./logs:/usr/src/app/logs
