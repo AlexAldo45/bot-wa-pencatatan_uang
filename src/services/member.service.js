@@ -1,6 +1,7 @@
 const memberRepository = require('../repositories/member.repository');
 const { ValidationError, NotFoundError, AuthorizationError } = require('../utils/errors');
 const { formatWhatsappId } = require('../utils/phone');
+const { getDb } = require('../database/database');
 
 class MemberService {
     /**
@@ -125,6 +126,24 @@ class MemberService {
         }
 
         memberRepository.addMemberToTrip(tripId, user.id, cleanNickname, 'MEMBER');
+
+        // Immediately set this trip as active for the member's private chat.
+        // Their private chat ID is their own whatsapp_id (e.g. "628xxx@c.us").
+        // This way they can chat the bot right away without needing to run !trip gabung.
+        try {
+            const db = getDb();
+            db.prepare(`
+                INSERT INTO chat_states (whatsapp_chat_id, active_trip_id)
+                VALUES (?, ?)
+                ON CONFLICT(whatsapp_chat_id) DO UPDATE SET
+                    active_trip_id = excluded.active_trip_id,
+                    updated_at = CURRENT_TIMESTAMP
+            `).run(targetWhatsappId, tripId);
+        } catch (err) {
+            // Non-fatal: member was still added, just chat_state might not be set
+            console.error('Failed to set chat_state for new member:', err.message);
+        }
+
         return {
             user,
             nickname: cleanNickname

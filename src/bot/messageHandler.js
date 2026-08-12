@@ -83,32 +83,38 @@ class MessageHandler {
                 // Auto-set active trip for members who were added by owner but never ran !trip gabung.
                 // If this chat has no active trip yet, but the sender is already a member of some trip,
                 // automatically activate the most recent trip they belong to for this chat.
-                const existingChatState = db.prepare(
-                    'SELECT active_trip_id FROM chat_states WHERE whatsapp_chat_id = ?'
-                ).get(chatId);
+                try {
+                    const existingChatState = db.prepare(
+                        'SELECT active_trip_id FROM chat_states WHERE whatsapp_chat_id = ?'
+                    ).get(chatId);
 
-                if (!existingChatState || !existingChatState.active_trip_id) {
-                    const senderUser = db.prepare('SELECT id FROM users WHERE whatsapp_id = ?').get(senderId);
-                    if (senderUser) {
-                        const latestMembership = db.prepare(`
-                            SELECT tm.trip_id FROM trip_members tm
-                            JOIN trips t ON tm.trip_id = t.id
-                            WHERE tm.user_id = ? AND t.status = 'ACTIVE'
-                            ORDER BY tm.joined_at DESC
-                            LIMIT 1
-                        `).get(senderUser.id);
+                    if (!existingChatState || !existingChatState.active_trip_id) {
+                        const senderUser = db.prepare('SELECT id FROM users WHERE whatsapp_id = ?').get(senderId);
+                        if (senderUser) {
+                            const latestMembership = db.prepare(`
+                                SELECT tm.trip_id FROM trip_members tm
+                                JOIN trips t ON tm.trip_id = t.id
+                                WHERE tm.user_id = ? AND t.status = 'ACTIVE'
+                                ORDER BY tm.joined_at DESC
+                                LIMIT 1
+                            `).get(senderUser.id);
 
-                        if (latestMembership) {
-                            db.prepare(`
-                                INSERT INTO chat_states (whatsapp_chat_id, active_trip_id)
-                                VALUES (?, ?)
-                                ON CONFLICT(whatsapp_chat_id) DO UPDATE SET
-                                    active_trip_id = excluded.active_trip_id,
-                                    updated_at = CURRENT_TIMESTAMP
-                            `).run(chatId, latestMembership.trip_id);
-                            logger.info({ chatId, senderId, tripId: latestMembership.trip_id }, 'Auto-set active trip for pre-added member');
+                            if (latestMembership) {
+                                db.prepare(`
+                                    INSERT INTO chat_states (whatsapp_chat_id, active_trip_id)
+                                    VALUES (?, ?)
+                                    ON CONFLICT(whatsapp_chat_id) DO UPDATE SET
+                                        active_trip_id = excluded.active_trip_id,
+                                        updated_at = CURRENT_TIMESTAMP
+                                `).run(chatId, latestMembership.trip_id);
+                                logger.info({ chatId, senderId, tripId: latestMembership.trip_id }, 'Auto-set active trip for pre-added member');
+                            } else {
+                                logger.debug({ chatId, senderId, userId: senderUser.id }, 'User has no ACTIVE trip membership — cannot auto-set trip');
+                            }
                         }
                     }
+                } catch (autoSetErr) {
+                    logger.error({ error: autoSetErr.message, chatId, senderId }, 'Failed to auto-set active trip for member');
                 }
 
                 // 4. Rate Limiting (Section 35)
@@ -217,7 +223,7 @@ class MessageHandler {
                 }
 
                 // 8. If not a command, process using Groq AI parser (Section 10, 11)
-                // Get active trip details for the chat to supply context
+                // Get active trip for this chat — read AFTER auto-set above so it reflects fresh state
                 const activeTrip = db.prepare(`
                     SELECT t.* FROM chat_states cs
                     JOIN trips t ON cs.active_trip_id = t.id
