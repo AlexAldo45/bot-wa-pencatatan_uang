@@ -89,7 +89,26 @@ class MessageHandler {
                     ).get(chatId);
 
                     if (!existingChatState || !existingChatState.active_trip_id) {
-                        const senderUser = db.prepare('SELECT id FROM users WHERE whatsapp_id = ?').get(senderId);
+                        // Try to find user by exact whatsapp_id first
+                        let senderUser = db.prepare('SELECT id FROM users WHERE whatsapp_id = ?').get(senderId);
+
+                        // If not found, try matching by phone number (handles @lid vs @c.us format mismatch)
+                        // WhatsApp sometimes sends @lid format even if user was registered as @c.us
+                        if (!senderUser) {
+                            const phoneNumber = senderId.split('@')[0];
+                            senderUser = db.prepare(
+                                'SELECT id FROM users WHERE phone_number = ? OR whatsapp_id LIKE ?'
+                            ).get(phoneNumber, `${phoneNumber}@%`);
+
+                            if (senderUser) {
+                                // Update the stored whatsapp_id to the current real senderId
+                                db.prepare(
+                                    'UPDATE users SET whatsapp_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+                                ).run(senderId, senderUser.id);
+                                logger.info({ senderId, userId: senderUser.id }, 'Updated whatsapp_id format for existing user (lid/c.us mismatch)');
+                            }
+                        }
+
                         if (senderUser) {
                             const latestMembership = db.prepare(`
                                 SELECT tm.trip_id FROM trip_members tm
@@ -111,6 +130,8 @@ class MessageHandler {
                             } else {
                                 logger.debug({ chatId, senderId, userId: senderUser.id }, 'User has no ACTIVE trip membership — cannot auto-set trip');
                             }
+                        } else {
+                            logger.debug({ chatId, senderId }, 'User not found in DB — new user, no auto-set possible');
                         }
                     }
                 } catch (autoSetErr) {
