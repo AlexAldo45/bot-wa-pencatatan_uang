@@ -60,7 +60,16 @@ class TransactionService {
             throw new AuthorizationError('You are not a member of this trip.');
         }
 
-        const date = transactionDate || getLocalDateTimeString();
+        // Build full datetime: if AI provided only YYYY-MM-DD, append current local time
+        // so spreadsheet always shows date + time, not just date.
+        let date;
+        if (transactionDate && /^\d{4}-\d{2}-\d{2}$/.test(transactionDate)) {
+            // Date-only string from AI — append current local time
+            const timePart = getLocalDateTimeString().split(' ')[1];
+            date = `${transactionDate} ${timePart}`;
+        } else {
+            date = transactionDate || getLocalDateTimeString();
+        }
         const txCode = this.generateTransactionCode(date);
 
         // Fetch all trip members to resolve nicknames
