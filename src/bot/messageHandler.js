@@ -118,17 +118,63 @@ class MessageHandler {
                     ).get(chatId);
 
                     if (!existingChatState || !existingChatState.active_trip_id) {
-                        // Try to find user by exact whatsapp_id first
-                        let senderUser = db.prepare('SELECT id FROM users WHERE whatsapp_id = ?').get(senderId);
+                        let senderUser = null;
 
-                        // If not found, try matching by contact's phone number (handles @lid vs @c.us format mismatch)
-                        // WhatsApp sometimes sends @lid format even if user was registered as @c.us
+                        // Robust matching for @lid senders to prevent duplicate user separation
+                        if (senderId.endsWith('@lid')) {
+                            try {
+                                const contact = await msg.getContact();
+                                if (contact && contact.number) {
+                                    const phoneNumber = contact.number;
+                                    const localPhone = phoneNumber.replace(/^62/, '0');
+                                    const intlPhone = phoneNumber.replace(/^0/, '62');
+
+                                    // Find the primary user registered by phone number (usually @c.us or the first one created)
+                                    const primaryUser = db.prepare(`
+                                        SELECT id, whatsapp_id, display_name FROM users 
+                                        WHERE phone_number = ? OR phone_number = ? 
+                                           OR whatsapp_id LIKE ? OR whatsapp_id LIKE ?
+                                        ORDER BY id ASC LIMIT 1
+                                    `).get(localPhone, intlPhone, `${localPhone}@%`, `${intlPhone}@%`);
+
+                                    if (primaryUser) {
+                                        // Check if there is a separate duplicate user record with the @lid JID
+                                        const lidUser = db.prepare('SELECT id, display_name FROM users WHERE whatsapp_id = ?').get(senderId);
+                                        
+                                        if (lidUser && lidUser.id !== primaryUser.id) {
+                                            logger.info({ 
+                                                targetUserId: primaryUser.id, 
+                                                targetName: primaryUser.display_name,
+                                                sourceUserId: lidUser.id, 
+                                                jid: senderId 
+                                            }, 'Merging duplicate @lid user record into primary user record');
+                                            mergeUsers(db, primaryUser.id, lidUser.id);
+                                        }
+
+                                        // Update primary user's whatsapp_id to the real senderId (@lid)
+                                        db.prepare(
+                                            'UPDATE users SET whatsapp_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+                                        ).run(senderId, primaryUser.id);
+                                        logger.info({ senderId, userId: primaryUser.id }, 'Updated primary user whatsapp_id to @lid format');
+                                        senderUser = primaryUser;
+                                    }
+                                }
+                            } catch (contactErr) {
+                                logger.error({ error: contactErr.message }, 'Failed to resolve @lid user via contact details');
+                            }
+                        }
+
+                        // If not resolved via @lid contact lookup, fallback to standard exact match
+                        if (!senderUser) {
+                            senderUser = db.prepare('SELECT id FROM users WHERE whatsapp_id = ?').get(senderId);
+                        }
+
+                        // Fallback matching for @c.us format (handles any standard phone number mismatch)
                         if (!senderUser) {
                             try {
                                 const contact = await msg.getContact();
                                 if (contact && contact.number) {
                                     const phoneNumber = contact.number;
-                                    // Try to match by phone number in DB (handles local 08... and international 628...)
                                     const localPhone = phoneNumber.replace(/^62/, '0');
                                     const intlPhone = phoneNumber.replace(/^0/, '62');
 
@@ -139,22 +185,15 @@ class MessageHandler {
                                     `).get(localPhone, intlPhone, `${localPhone}@%`, `${intlPhone}@%`);
 
                                     if (senderUser) {
-                                         // Handle duplicate JID conflict dynamically (e.g. user registered as both @c.us and @lid in separate database rows)
-                                         const existingUser = db.prepare('SELECT id FROM users WHERE whatsapp_id = ?').get(senderId);
-                                         if (existingUser && existingUser.id !== senderUser.id) {
-                                             logger.info({ 
-                                                 targetUserId: senderUser.id, 
-                                                 sourceUserId: existingUser.id, 
-                                                 jid: senderId 
-                                             }, 'Merging duplicate users dynamically');
-                                             mergeUsers(db, senderUser.id, existingUser.id);
-                                         }
+                                        const existingUser = db.prepare('SELECT id FROM users WHERE whatsapp_id = ?').get(senderId);
+                                        if (existingUser && existingUser.id !== senderUser.id) {
+                                            mergeUsers(db, senderUser.id, existingUser.id);
+                                        }
 
-                                         // Update the stored whatsapp_id to the current real senderId
-                                         db.prepare(
-                                             'UPDATE users SET whatsapp_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-                                         ).run(senderId, senderUser.id);
-                                         logger.info({ senderId, userId: senderUser.id }, 'Updated whatsapp_id format for existing user dynamically (lid/c.us mismatch)');
+                                        db.prepare(
+                                            'UPDATE users SET whatsapp_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+                                        ).run(senderId, senderUser.id);
+                                        logger.info({ senderId, userId: senderUser.id }, 'Updated whatsapp_id format for existing user dynamically (c.us)');
                                     }
                                 }
                             } catch (contactErr) {
