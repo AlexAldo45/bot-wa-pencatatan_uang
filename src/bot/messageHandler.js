@@ -55,8 +55,8 @@ function mergeUsers(db, targetUserId, sourceUserId) {
         db.prepare('UPDATE OR IGNORE transactions SET created_by_user_id = ? WHERE created_by_user_id = ?').run(targetUserId, sourceUserId);
         db.prepare('UPDATE OR IGNORE transactions SET paid_by_user_id = ? WHERE paid_by_user_id = ?').run(targetUserId, sourceUserId);
         db.prepare('UPDATE OR IGNORE transaction_splits SET user_id = ? WHERE user_id = ?').run(targetUserId, sourceUserId);
-        db.prepare('UPDATE OR IGNORE debts SET debtor_user_id = ? WHERE debtor_user_id = ?').run(targetUserId, sourceUserId);
-        db.prepare('UPDATE OR IGNORE debts SET creditor_user_id = ? WHERE creditor_user_id = ?').run(targetUserId, sourceUserId);
+        db.prepare('UPDATE OR IGNORE debt_payments SET debtor_user_id = ? WHERE debtor_user_id = ?').run(targetUserId, sourceUserId);
+        db.prepare('UPDATE OR IGNORE debt_payments SET creditor_user_id = ? WHERE creditor_user_id = ?').run(targetUserId, sourceUserId);
         db.prepare('UPDATE OR IGNORE member_aliases SET member_user_id = ? WHERE member_user_id = ?').run(targetUserId, sourceUserId);
         db.prepare('UPDATE OR IGNORE audit_logs SET actor_user_id = ? WHERE actor_user_id = ?').run(targetUserId, sourceUserId);
         db.prepare('UPDATE OR IGNORE pending_actions SET user_id = ? WHERE user_id = ?').run(targetUserId, sourceUserId);
