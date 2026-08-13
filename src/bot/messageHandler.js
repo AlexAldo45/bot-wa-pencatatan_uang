@@ -124,25 +124,6 @@ class MessageHandler {
                         if (senderId.endsWith('@lid')) {
                             try {
                                 const contact = await msg.getContact();
-                                
-                                // DEBUG: log all contact properties to find the real phone number for @lid
-                                let formattedNum = null;
-                                try {
-                                    formattedNum = await client.getFormattedNumber(senderId);
-                                } catch (e) {
-                                    formattedNum = 'ERROR: ' + e.message;
-                                }
-
-                                logger.info({
-                                    senderId,
-                                    contact_keys: Object.keys(contact),
-                                    contact_number: contact.number,
-                                    contact_id: contact.id,
-                                    contact_raw: contact.raw ? Object.keys(contact.raw) : null,
-                                    contact_raw_phone: contact.raw ? contact.raw.phone : null,
-                                    contact_raw_formatted: contact.raw ? contact.raw.formattedPhone : null,
-                                    client_formattedNumber: formattedNum
-                                }, '[DEBUG] LID Contact Inspection Properties');
 
                                  const rawPhone = (contact && contact.id && contact.id.server === 'c.us') ? contact.id.user : (contact ? contact.number : null);
                                  if (rawPhone) {

@@ -149,14 +149,6 @@ function initializeWhatsapp() {
 
     clientInstance.on('message', async (msg) => {
         lastMessageReceivedAt = Date.now();
-        // DEBUG: log every incoming message to diagnose filtering issues
-        logger.info({
-            from: msg.from,
-            author: msg.author || null,
-            type: msg.type,
-            isStatus: msg.isStatus,
-            bodyPreview: msg.body ? msg.body.substring(0, 50) : null
-        }, '[DEBUG] Incoming message received');
         try {
             await messageHandler.handleMessage(clientInstance, msg);
         } catch (err) {
