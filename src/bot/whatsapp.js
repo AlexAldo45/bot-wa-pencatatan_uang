@@ -266,18 +266,20 @@ async function syncMemberJids(client) {
 
         // 1. Add contacts to map
         for (const c of contacts) {
-            // For LID contacts, c.number is the actual phone number, while c.id.user is the 15-digit LID.
-            // For standard c.us contacts, both c.number and c.id.user contain the phone number.
-            if (c.number) {
-                const suffix = getPhoneSuffix(c.number);
-                if (suffix) {
-                    JidMap.set(suffix, c.id._serialized);
-                }
-            }
-            if (c.id.server === 'c.us') {
+            // If c.number (LID) is different from c.id.user (phone number), c.number contains the LID.
+            // We reconstruct the @lid JID and map the user's phone suffix to it.
+            if (c.number && c.id.user && c.number !== c.id.user) {
+                const lidJid = `${c.number}@lid`;
                 const suffix = getPhoneSuffix(c.id.user);
                 if (suffix) {
-                    JidMap.set(suffix, c.id._serialized);
+                    JidMap.set(suffix, lidJid);
+                }
+            } else {
+                if (c.id.server === 'c.us') {
+                    const suffix = getPhoneSuffix(c.id.user);
+                    if (suffix) {
+                        JidMap.set(suffix, c.id._serialized);
+                    }
                 }
             }
         }
@@ -295,13 +297,14 @@ async function syncMemberJids(client) {
                                     JidMap.set(suffix, p.id._serialized);
                                 }
                             } else {
-                                // If JID is in @lid format, we need to fetch contact to get the phone number (contact.number)
+                                // If JID is in @lid format, we fetch contact.
+                                // The contact's contact.id.user is the phone number (since client translates it to c.us)
                                 try {
                                     const contact = await client.getContactById(p.id._serialized);
-                                    if (contact && contact.number) {
-                                        const suffix = getPhoneSuffix(contact.number);
+                                    if (contact && contact.id && contact.id.server === 'c.us') {
+                                        const suffix = getPhoneSuffix(contact.id.user);
                                         if (suffix) {
-                                            JidMap.set(suffix, p.id._serialized);
+                                            JidMap.set(suffix, p.id._serialized); // Map phone suffix to the LID JID (p.id._serialized)
                                         }
                                     }
                                 } catch (e) {

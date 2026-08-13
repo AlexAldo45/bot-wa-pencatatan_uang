@@ -144,10 +144,11 @@ class MessageHandler {
                                     client_formattedNumber: formattedNum
                                 }, '[DEBUG] LID Contact Inspection Properties');
 
-                                if (contact && contact.number) {
-                                    const phoneNumber = contact.number;
-                                    const localPhone = phoneNumber.replace(/^62/, '0');
-                                    const intlPhone = phoneNumber.replace(/^0/, '62');
+                                 const rawPhone = (contact && contact.id && contact.id.server === 'c.us') ? contact.id.user : (contact ? contact.number : null);
+                                 if (rawPhone) {
+                                     const phoneNumber = rawPhone.replace(/\D/g, '');
+                                     const localPhone = phoneNumber.replace(/^62/, '0');
+                                     const intlPhone = phoneNumber.replace(/^0/, '62');
 
                                     // Find the primary user registered by phone number (usually @c.us or the first one created)
                                     const primaryUser = db.prepare(`
