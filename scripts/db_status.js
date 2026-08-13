@@ -1,16 +1,18 @@
 /**
  * Script: db_status.js
  * Analyzes the database status to see trips, members, and transactions.
+ * Uses the project's standard database helper for cross-platform compatibility.
  * 
  * Run in server:
  *   docker exec tripwallet-ai node scripts/db_status.js
+ * Run locally:
+ *   node scripts/db_status.js
  */
 
-const Database = require('better-sqlite3');
-const path = require('path');
+const { getDb } = require('../src/database/database');
 
 try {
-    const db = new Database('/usr/src/app/data/database.sqlite');
+    const db = getDb();
     
     console.log('=======================================');
     console.log('DATABASE STATUS REPORT');
@@ -51,7 +53,6 @@ try {
     console.log(`\nTotal Transactions in DB: ${totalTxs}`);
     
     console.log('=======================================');
-    db.close();
 } catch (err) {
     console.error('Error analyzing database:', err.message);
 }
