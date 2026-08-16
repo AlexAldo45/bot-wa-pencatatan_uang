@@ -1,29 +1,9 @@
-const { Groq } = require('groq-sdk');
 const config = require('../config');
 const logger = require('../utils/logger');
 const { AIProviderError } = require('../utils/errors');
 
-let groqInstance = null;
-
 function getGroqClient() {
-    if (!config.aiEnabled) {
-        return null;
-    }
-
-    if (!groqInstance) {
-        if (!config.groqApiKey || config.groqApiKey === 'gsk_dummy_api_key_replace_me') {
-            logger.warn('GROQ_API_KEY is not configured or is dummy. AI functionality will be mock-only.');
-        }
-        const clientOptions = {
-            apiKey: config.groqApiKey || 'dummy_key'
-        };
-        if (config.groqBaseUrl) {
-            clientOptions.baseURL = config.groqBaseUrl;
-        }
-        groqInstance = new Groq(clientOptions);
-    }
-
-    return groqInstance;
+    return null; // Bypassed in favor of native fetch requests
 }
 
 /**
@@ -45,8 +25,7 @@ async function withTimeout(promise, timeoutMs = 30000) {
  * Execute Groq completion with retries and timeout
  */
 async function getChatCompletion(messages, options = {}) {
-    const client = getGroqClient();
-    if (!client) {
+    if (!config.aiEnabled) {
         throw new AIProviderError('AI function is disabled in configuration');
     }
 
@@ -54,17 +33,46 @@ async function getChatCompletion(messages, options = {}) {
     const maxTokens = options.maxTokens || config.aiMaxTokens;
     const temperature = options.temperature || config.aiTemperature;
 
+    // Resolve URL path cleanly:
+    // If GROQ_BASE_URL is configured (e.g. https://www.chenzk.top/v1), append /chat/completions.
+    // If not, default to the official Groq API endpoint.
+    const url = config.groqBaseUrl 
+        ? `${config.groqBaseUrl.replace(/\/+$/, '')}/chat/completions` 
+        : 'https://api.groq.com/openai/v1/chat/completions';
+
+    const apiKey = config.groqApiKey || 'dummy_key';
+
     const fn = async (useJsonMode) => {
-        return withTimeout(
-            client.chat.completions.create({
-                model,
-                messages,
-                max_tokens: maxTokens,
-                temperature,
-                response_format: useJsonMode ? { type: "json_object" } : undefined
-            }),
-            30000 // 30 seconds timeout
-        );
+        const bodyObj = {
+            model,
+            messages,
+            max_tokens: maxTokens,
+            temperature
+        };
+        if (useJsonMode) {
+            bodyObj.response_format = { type: "json_object" };
+        }
+
+        const fetchPromise = fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(bodyObj)
+        }).then(async (res) => {
+            const resText = await res.text();
+            if (!res.ok) {
+                throw new Error(`${res.status} ${resText}`);
+            }
+            try {
+                return JSON.parse(resText);
+            } catch (jsonErr) {
+                throw new Error(`Invalid JSON response: ${resText}`);
+            }
+        });
+
+        return withTimeout(fetchPromise, 30000);
     };
 
     let attempt = 0;
@@ -74,8 +82,11 @@ async function getChatCompletion(messages, options = {}) {
 
     while (attempt < maxAttempts) {
         try {
-            const completion = await fn(useJsonMode);
-            return completion.choices[0].message.content;
+            const data = await fn(useJsonMode);
+            if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+                throw new Error(`Invalid response structure: ${JSON.stringify(data)}`);
+            }
+            return data.choices[0].message.content;
         } catch (err) {
             attempt++;
             
