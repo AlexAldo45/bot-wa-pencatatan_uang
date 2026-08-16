@@ -50,14 +50,14 @@ async function getChatCompletion(messages, options = {}) {
     const maxTokens = options.maxTokens || config.aiMaxTokens;
     const temperature = options.temperature || config.aiTemperature;
 
-    const fn = async () => {
+    const fn = async (useJsonMode) => {
         return withTimeout(
             client.chat.completions.create({
                 model,
                 messages,
                 max_tokens: maxTokens,
                 temperature,
-                response_format: options.jsonMode ? { type: "json_object" } : undefined
+                response_format: useJsonMode ? { type: "json_object" } : undefined
             }),
             30000 // 30 seconds timeout
         );
@@ -66,13 +66,21 @@ async function getChatCompletion(messages, options = {}) {
     let attempt = 0;
     const maxAttempts = 3;
     const baseDelay = 1000;
+    let useJsonMode = !!options.jsonMode;
 
     while (attempt < maxAttempts) {
         try {
-            const completion = await fn();
+            const completion = await fn(useJsonMode);
             return completion.choices[0].message.content;
         } catch (err) {
             attempt++;
+            
+            // If jsonMode failed (e.g. 400 validation error or unsupported model), disable it for retries
+            if (useJsonMode) {
+                logger.warn({ error: err.message }, 'Groq JSON mode failed or is unsupported. Falling back to text mode for retries.');
+                useJsonMode = false;
+            }
+
             if (attempt >= maxAttempts) {
                 logger.error({ error: err.message }, 'Groq request failed after all attempts');
                 throw new AIProviderError(`Groq AI request failed: ${err.message}`);

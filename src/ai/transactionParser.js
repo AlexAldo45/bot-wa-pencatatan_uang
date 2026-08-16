@@ -35,7 +35,9 @@ class TransactionParser {
             
             let parsedJson;
             try {
-                parsedJson = JSON.parse(responseText);
+                const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+                const cleanedText = jsonMatch ? jsonMatch[0] : responseText;
+                parsedJson = JSON.parse(cleanedText);
             } catch (err) {
                 logger.error({ responseText, error: err.message }, 'Failed to parse JSON response from Groq');
                 throw new AIProviderError('Groq AI returned invalid JSON');
