@@ -14,9 +14,13 @@ function getGroqClient() {
         if (!config.groqApiKey || config.groqApiKey === 'gsk_dummy_api_key_replace_me') {
             logger.warn('GROQ_API_KEY is not configured or is dummy. AI functionality will be mock-only.');
         }
-        groqInstance = new Groq({
+        const clientOptions = {
             apiKey: config.groqApiKey || 'dummy_key'
-        });
+        };
+        if (config.groqBaseUrl) {
+            clientOptions.baseURL = config.groqBaseUrl;
+        }
+        groqInstance = new Groq(clientOptions);
     }
 
     return groqInstance;
